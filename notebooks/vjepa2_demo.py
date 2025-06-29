@@ -24,7 +24,7 @@ IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 PT_MODEL_PATH = "/home/klu/LCVR/data/LCVR_weights/hub/checkpoints/vitg-384.pt"
 HF_MODEL_NAME = "facebook/vjepa2-vitg-fpc64-384"
-ATTENTIVE_PROBE_PATH = "/home/klu/LCVR/data/LCVR_weights/models--facebook--vjepa2-vitg-fpc64-384-ssv2/snapshots/d99eb0f401dd68d3af68c6abd6462266c883c02b/model.safetensors"
+ATTENTIVE_PROBE_PATH = "/data/LCVR_weights/ssv2-vitg-384-64x2x3.pt"
 
 
 def load_pretrained_vjepa_pt_weights(model, pretrained_weights):
