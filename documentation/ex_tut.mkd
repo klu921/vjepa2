@@ -1,0 +1,273 @@
+## H100 Flash Attention in TK
+
+Tips: Skimming `lcf.cuh` is useful (how producers + consumers interact on a broader level)
+
+This is a line-by-line breakdown of a flash-attention kernel optimized for h100. The full code can be found [here](https://github.com/HazyResearch/ThunderKittens/blob/main/kernels/attn/demo/h100_lcf.cu).
+
+The load-compute-finish structure allows specified "producer" warps to load in data, while "consumer" warps simultaneously compute with the loaded in data, allowing for a continual load/compute pipeline.
+
+```cuda
+#include "kittens.cuh"
+#include "prototype.cuh"
+
+using namespace kittens;
+using namespace kittens::prototype;
+using namespace kittens::prototype::lcf;
+```
+
+All the abstractions that TK provides are included in 'kittens.cuh' and 'prototype.cuh'.
+
+- 'kittens.cuh' holds all TK abstractions and core functionality, including common utilities, the type definitions + data structures, operations + kerenls, and pyutils.
+
+- 'prototype.cuh' holds all TK prototypes, including the "lcf" (load compute finish) template that we use, and the "lcsf" (loda compute store finish) template.
+
+The "using namespace" lines let's us take functions directly from those directories without having to type out the paths. (eg: instead of writing out `kittens::prototype::lcf::common_setup_args`, we can just type `common_setup_args`).
+
+
+## Attention Layout
+
+Next, we map our storage out with a template. This template specifies data and memory structure for the attention forward pass, and tells the LCF framework how to organize data across global, shared, and register memory. Our template takes in two parameters that can be used at compile time: 
+
+- `D` is the dimension of the query, key, value vectors
+- `NUM_WORKERS` where a workers are assigned separate work within a warpgroup.
+
+```cuda
+template<int D, int NUM_WORKERS> struct attn_fwd_layout {
+    using qo_tile   = st_bf<64, D>;
+    using kv_tile   = st_bf<D==64?192:128, D>;
+    using qo_global = kittens::gl<bf16, -1, -1, -1, D, qo_tile>;
+    using kv_global = kittens::gl<bf16, -1, -1, -1, D, kv_tile>;
+    struct globals { qo_global O, Q; kv_global K, V; };
+    struct input_block    { kv_tile k, v; };
+    struct scratch_block  { qo_tile q[NUM_WORKERS]; };
+    struct common_state   { int batch, head, seq; };
+    struct consumer_state {
+        rt_fl<16, qo_tile::cols> o_reg;
+        col_vec<rt_fl<16, kv_tile::rows>> max_vec, norm_vec;
+        col_vec<rt_fl<16, kv_tile::rows>> max_vec_last_scaled, max_vec_scaled;
+        rt_fl<16, kv_tile::rows> att_block;
+        rt_bf<16, kv_tile::rows> att_block_mma;
+    };
+};
+```
+
+
+When we actually write the producer, consumer, and finish structs, we will fill this template with values that map to our input based on the block we're in.
+
+
+We also initialize a few structures which keep our code organized. 
+- The types `qo_tile`, `kv_tile` are both tiles in shared memory of their specified dimensions.
+- The types `qo_global`, `kv_global` means we're allocating global memory of the specified size, to be organized in their respective tiles.
+- We initialize `O`, `Q`, `K`, `V` as the global vectors.
+- `input_block` holds a k tile and a v tile.
+- `scratch_block` holds a qo_tile for each worker. 
+- `common_state` contains batch, head, and sequence dimensions
+- `consumer_state` contains many references to storage items:
+  - A register tile that holds our output: 
+  - A column vector that holds the running max vector and normalized vector for softmaxing
+  - More col vectors for softmax tools
+  - A register tile for the attention block (in float 32)
+  - A register tile for the attention block matmul accumulate (in bf16)
+
+## Attention Forward Template
+
+```cuda
+template<int D> struct attn_fwd_template {
+    static constexpr int NUM_CONSUMER_WARPS = 12, NUM_WORKERS = NUM_CONSUMER_WARPS/4, INPUT_PIPE_STAGES = 2;
+    using layout = attn_fwd_layout<D, NUM_WORKERS>;
+    __device__ static inline void common_setup(common_setup_args<layout> args) {
+        int task_id = gridDim.x*args.task_iter + blockIdx.x; // task_id is the index of the current task
+        int seq_q = (args.globals.Q.rows() + NUM_WORKERS*layout::qo_tile::rows - 1)/(NUM_WORKERS*layout::qo_tile::rows); // seq_q is the number of tiles (number of blocks since each block handles one tile)
+        args.common.batch = task_id / (seq_q*args.globals.K.depth());  // which batch of tiles we're on
+        task_id -= args.common.batch * seq_q * args.globals.K.depth(); // depth is the size of each attention head
+        args.common.head  = task_id / seq_q;                        // which head of the batch we're on
+        task_id -= args.common.head  * seq_q;
+        args.common.seq   = task_id; // which seq index of the head we're on
+        args.num_iters = args.common.batch < args.globals.Q.batch() ? (args.globals.K.rows() + layout::kv_tile::rows - 1)/(layout::kv_tile::rows) : -1; // if we're still processing batches, num_iters is the number of K/V tiles we need to process to cover the entire sequence
+        if(threadIdx.x == 0) printf("Common setup: batch=%d, head=%d, seq=%d, num_iters=%d\n", args.common.batch, args.common.head, args.common.seq, args.num_iters);
+    }
+```
+We break down line by line:
+
+`    static constexpr int NUM_CONSUMER_WARPS = 12, NUM_WORKERS = NUM_CONSUMER_WARPS/4, INPUT_PIPE_STAGES = 2;`
+
+In total, we have 16 warps: 12 consumers, 4 producers. We have 3 workers. `INPUT_PIPE_STAGES` means we allocate 2 input blocks in shared memory that act as a ring buffer, meaning we have: 
+- Loc 0: containing K/V tiles for iteration N
+- Loc 1: containing K/V tiles for iteration N+1
+
+and we rewrite memory to the same locations while accessing what we need to compute next.
+
+With `using layout = attn_fwd_layout<D, NUM_WORKERS>;`, we set our layout to follow the template above. The struct 'args' comes in pre-filled with references to memory locations, and our code assigns values to those memory locations through the references.
+
+The line `int task_id = gridDim.x*args.task_iter + blockIdx.x;` tells us which piece of work (task id) this block should process. `gridDim` is built-in CUDA that contains the number of blocks in the grid. The gridDim is defined by the programmer when launching the kernel. Normally, it's decided based on the amount of work, 'tasks' the programmer needs to get done in parallel.
+
+`args.task_iter` tells us how many times we have to iterate through each task, since we only have `132` (our grid dimension) blocks, and may need to iterate more than once through each task.
+
+`seq_q` is the number of `qo_tiles` we need to cover our entire Q-vector.
+
+The task_id can be broken into:
+-  which batch we're on (each batch contains `seq_q * K.depth()` tasks to process)
+-  which head of the `K.depth()` heads we're on. 
+-  which sequence tile we're on
+
+`args.num_iters` tells us how many K/V tiles to process (how many times the producer loads K/V data and consumer computes attention before the block finishes its work).
+
+
+## The Producer
+```cuda
+struct producer {
+        __device__ static inline void setup(producer_setup_args<layout> args) {
+            warpgroup::producer_registers(); //This decreases # of registers per warpgroup by 24.
+            if(threadIdx.x == 0) printf("Producer setup complete\n");
+        }
+        __device__ static inline void load(producer_load_args<layout> args) {
+            if(warpgroup::warpid() == 0) { // if you're the first warp in the warpgroup, you load in the input
+                if(threadIdx.x == 0) printf("Producer loading iter %d\n", args.iter); //if you're the first thread in the warp, you print the iter.
+                tma::expect(args.inputs_arrived, args.input);
+                tma::load_async(args.input.k, args.globals.K, {args.common.batch, args.common.head, args.iter, 0}, args.inputs_arrived);
+                tma::load_async(args.input.v, args.globals.V, {args.common.batch, args.common.head, args.iter, 0}, args.inputs_arrived);
+            }
+            else if(laneid() == 0) arrive(args.inputs_arrived);
+        }
+    };
+```
+
+The producers are warpgroups which load in data for consumer warps to compute on. In `setup`, the function
+`warpgroup::producer_registers();` moves space out of producer registers so consumers can use more, since they need space to compute while producers don't.
+
+Then, in the `load` function, the first warp in the warpgroup loads in the input. Only one warp loads in data, because TMA operations are expensive. 
+- `tma::expect` tells the TMA what semaphore to signal when done. 
+- `tma::load_async` initiates an async memory transfer from global to shared memory.
+
+When inputs have arrived, we signal to the consumer warps with our semaphore and the `arrive(args.inputs.arrived)` function.
+
+The consumer waiting function is hidden in the LCF framework (`lcf.cuh`), where compute gets called after the `wait` function.
+
+## The Consumer
+Next we have our consumer which performs attention computations. The attention function outputs $\textnormal{softmax}(\frac{QK^T}{\sqrt{d}})V.$
+
+### Setup:
+We first perform a setup:
+```cuda
+
+
+struct consumer {
+        __device__ static inline void setup(consumer_setup_args<layout> args) {
+            warpgroup::consumer_registers<NUM_WORKERS>();
+            if((args.common.seq*NUM_WORKERS + warpgroup::groupid())*layout::qo_tile::rows < args.globals.Q.rows()) // out of bounds?
+                warpgroup::load(args.scratch.q[warpgroup::groupid()], args.globals.Q,
+                                {args.common.batch, args.common.head, args.common.seq*NUM_WORKERS+warpgroup::groupid(), 0});
+            args.state.o_reg = 0.f;
+            args.state.norm_vec = 0.f;
+            args.state.max_vec = base_types::constants<float>::neg_infty();
+            printf("Consumer setup: running causal file, warpgroup=%d\n", warpgroup::groupid());
+            warpgroup::sync(warpgroup::groupid());
+        }
+```
+
+This loads in the global $Q$ at the appropriate batch, head, and sequence position determined by which block we're in. We also prefill our output vectors, running norm (the denom of our softmax), and max vector (which we subtract from every softmax entry to prevent explosions) (all of these were in register memory). Syncing ensures all warpgroups have reached this point before continuing.
+
+
+
+### Compute: For noncausal
+```cuda
+__device__ static inline void compute(consumer_compute_args<layout> args) {
+            constexpr float TEMPERATURE_SCALE = (D == 128) ? 0.08838834764f*1.44269504089f : 0.125f*1.44269504089f;
+            // A = Q @ K.T
+            warpgroup::mm_ABt(args.state.att_block, args.scratch.q[warpgroup::groupid()], args.input.k);
+            mul(args.state.max_vec_last_scaled, args.state.max_vec, TEMPERATURE_SCALE);
+            warpgroup::mma_async_wait();
+            // softmax
+            right_fill(args.state.att_block, args.state.att_block, args.globals.K.rows - args.iter*layout::kv_tile::rows, base_types::constants<float>::neg_infty());
+            row_max(args.state.max_vec, args.state.att_block, args.state.max_vec); // accumulate onto the max_vec
+            mul(args.state.max_vec_scaled, args.state.max_vec, TEMPERATURE_SCALE);
+            mul(args.state.att_block, args.state.att_block, TEMPERATURE_SCALE);
+            sub_row(args.state.att_block, args.state.att_block, args.state.max_vec_scaled);
+            exp2(args.state.att_block, args.state.att_block);
+            sub(args.state.max_vec_last_scaled, args.state.max_vec_last_scaled, args.state.max_vec_scaled);
+            exp2(args.state.max_vec_last_scaled, args.state.max_vec_last_scaled);
+            mul(args.state.norm_vec, args.state.norm_vec, args.state.max_vec_last_scaled);
+            row_sum(args.state.norm_vec, args.state.att_block, args.state.norm_vec); // accumulate onto the norm_vec
+            mul_row(args.state.o_reg, args.state.o_reg, args.state.max_vec_last_scaled); // normalize o_reg before mma
+            copy(args.state.att_block_mma, args.state.att_block); // convert to bf16 for mma
+            // O += A @ V
+            warpgroup::mma_AB(args.state.o_reg, args.state.att_block_mma, args.input.v);
+            warpgroup::mma_async_wait();
+            if(laneid() == 0) arrive(args.inputs_finished); // done!
+        }
+```
+We first calculate our denominator in the line:
+`constexpr float TEMPERATURE_SCALE = (D == 128) ? 0.08838834764f*1.44269504089f : 0.125f*1.44269504089f;`.
+We use exact numbers because we can compile at compile-time instead of relying on operations. Exponents in cuda also take powers of 2 instead of e, so we have multiply by a normalizing constant $\log_2 e$.
+
+Then, we take our current section of $Q$, multiply it by the matching input $K$ block, transposed, and store those in the state attention register-tile block.
+` warpgroup::mm<transpose::N, transpose::T>(args.state.att_block, args.scratch.q[warpgroup::groupid()], args.input.k);`.
+
+Then, we softmax. First, if we're at the end of a row, and have an incomplete K-tile that sticks out, we fill the remainder of that tile with negative infinity, because we don't want uninitialized memory to mess with our softmax computation.
+
+The `row_max(args.state.max_vec, args.state.att_block, args.state.max_vec);` line takes the max of each row in the att_block, compares it with each row of max_vec, and stores it back in max_vec.
+
+Then, we follow the math. We iterate through compute `num_iters` times (hidden in `lcf.cuh` *looking through lcf.cuh is super helpful in understanding how producer + consumer blocks interact, wait for each other, and iteration stats), so that our max_vec and norm_vec accumulates over all $k$ tiles. Then, we convert to $bf16$ for mat mul with the $value$ tiles, and send it back to $o_{reg}$.
+
+### Compute (for causal):
+
+For causal attention, we have to ensure that if we're querying sequence token $t$, we only consider keys $1, \ldots, t$ in our softmax. To do this, beefore we compute, we compare $k$ and $q$ indices, and fill $k$ values with $- \infty$ appropriately. 
+
+Note that since we're working with tiles, suppose we're looking at query position $t$. If we have a k-tile that begins at $t+a$, we can simply skip computations here, since it adds nothing to the normal vector, max vector, or running total because we fill this entire tile with $- \infty$.
+
+If we have a k-tile whose last row ends before $t$, we can treat it as we did noncausally.
+
+If we have a k-tile which contains seq index $t$, we have to be careful, and utilize the $\texttt{tril}$ function to properly mask out indices to the right of seq.index $t$ with $- \infty$.
+
+We begin by finding the start-seq-index of our $q$-tile, and the start-index of our $kv$-tile.
+
+```cuda
+int qidx = (args.common.seq*NUM_WORKERS+warpgroup::groupid())*layout::qo_tile::rows;
+int kvidx = args.iter*layout::kv_tile::rows;
+```
+
+Then, as we said earlier, if the start-index of the k-tile comes after the start-index of the q-tile, we can ignore the tile. (This only works because # rows covered by $k$-tile is a perfect multiple of 64 (# rows covered by $q$-tile), and both tiles are indexed from $0$, so a query index $64n + s$ is never affected by a $k$-tile with start-index greater than $64n$.) This is done with the if-statement `if (!causal || kvidx <= qidx)`.
+
+Then, we proceed as with non-causal. We have to be careful that if the query index lies within a kv tile, we zero out above a certain diagonal point. 
+
+That is done in this block of code:
+```cuda
+if (causal) {
+                    // if qidx - kvidx is less than the number of columns, this tile passes the diagonal
+                    if (qidx - kvidx < layout::kv_tile::rows) {
+                        // blocks are wider than they are tall, so we have mulitple blocks on the diagonal
+                        // kvidx - qidx gives the (negative) offset based on block
+                        // 16 * (warpgroup::warpid() % 4) gives the offset based on the warp
+                        tril(args.state.att_block, args.state.att_block, kvidx - qidx - 16 * (warpgroup::warpid() % 4), base_types::constants<float>::neg_infty());
+                    }
+                }
+```
+The tril function masks values `kvidx - qidx - 16 * (warpgroup::warpid() % 4)` above the diagonal, with negative infinities, so they accumulate to $0$ in the softmax equation.
+
+Then, we proceed as normal with our softmax calculation.
+
+
+### Finish: 
+```cuda
+__device__ static inline void finish(consumer_finish_args<layout> args) {
+            if((args.common.seq*NUM_WORKERS+warpgroup::groupid())*64 < args.globals.Q.rows) { // out of bounds?
+                div_row(args.state.o_reg, args.state.o_reg, args.state.norm_vec);
+                auto &o_smem = reinterpret_cast<typename layout::qo_tile&>(args.scratch.q[warpgroup::groupid()]);
+                warpgroup::store(o_smem, args.state.o_reg);
+                warpgroup::sync(warpgroup::groupid());
+                if(warpgroup::warpid() == 0)
+                    tma::store_async(args.globals.O, o_smem, {args.common.batch, args.common.head, args.common.seq*NUM_WORKERS+warpgroup::groupid(), 0});
+                tma::store_async_read_wait();
+            }
+            __syncwarp();
+            if(laneid() == 0) arrive(args.finish_finished); // done!
+        }
+    };
+```
+
+We ensure that the sequence index is within bounds of $Q$ with the if-statement. Then, we divide our output by our normalizing denominator.
+
+The line `auto &o_smem = reinterpret_cast<typename layout::qo_tile&>(args.scratch.q[warpgroup::groupid()]);` takes raw shared memory, reinterprets it in our `qo_tile` type, allowing us to store our `o_reg` vector in it. 
+
+We sync along all warpgroups, and then store our final outputs back to global memory in the correct locations given by `{args.common.batch, args.common.head, args.common.seq*NUM_WORKERS+warpgroup::groupid(), 0}`, and we are done.
+
