@@ -1,0 +1,3 @@
+1. Extracts frames from a video, 1 second apart.
+2. Extracts embeddings from each frame individually using VJEPA-2
+3. Clusters frames to get keyframes

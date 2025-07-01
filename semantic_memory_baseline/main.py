@@ -7,7 +7,7 @@ import torch
 from transformers import AutoModel, AutoVideoProcessor
 import numpy as np
 from PIL import Image
-
+import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 
 
@@ -68,10 +68,11 @@ def cluster_embeddings(embeddings, n_clusters = 100):
     labels = kmeans.fit_predict(embeddings)
     return labels, kmeans
 
-def get_cluster_centers(embedddings, kmeans, labels, n_clusters = 100):
+def get_cluster_centers(embeddings, kmeans, labels, n_clusters = 100):
     """
     Takes in embeddings, labels, # clusters
     Looks at each cluster, finds the frame closest to the cluster centroid
+    Run from inside semantic_memory_baseline/ for frames pathing to be correct
     """
     representative_frames = []
     for cluster_idx in range(n_clusters):
@@ -80,9 +81,10 @@ def get_cluster_centers(embedddings, kmeans, labels, n_clusters = 100):
         centroid = kmeans.cluster_centers_[cluster_idx]
         distances = np.linalg.norm(cluster_embeddings - centroid, axis = 1)
         closest_frame_idx = np.argmin(distances)
+        actual_frame_number = possible_frames[closest_frame_idx] + 1 # + 1 because frames are 1-indexed
         representative_frames.append({
-            "frame_id": int(closest_frame_idx),
-            "frame_path": f"{frames_path}/frame_{closest_frame_idx:04d}.jpg",
+            "frame_id": int(actual_frame_number),
+            "frame_path": f"frames/frame_{actual_frame_number:04d}.jpg",
             "cluster_id": int(cluster_idx),
             "cluster_centroid": centroid.tolist(),
             })
@@ -96,9 +98,31 @@ def save_representative_frames(representative_frames, output_path = "representat
         json.dump(representative_frames, f)
 
 
+def plot_representative_frames(representative_frames, num_clusters):
+    """
+    Plots the representative frames in a 4x5 grid
+    """
+    fig, axs = plt.subplots(4, 5, figsize=(20, 16))
+    axs = axs.flatten()
+    
+    sorted_frames = sorted(representative_frames, key=lambda x: x["frame_id"])
+
+    for i, frame in enumerate(sorted_frames):
+        img = Image.open(frame["frame_path"])
+        axs[i].imshow(img)
+        axs[i].set_title(f"Frame {frame['frame_id']}")
+        axs[i].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig(f"representative_frames_{num_clusters}.png")
+    plt.show()
+
+
+
 
 if __name__ == "__main__":
-    num_clusters = 20
+    
+    num_clusters = 10
 
     embeddings = np.load("data_storage/all_embeddings.npy")
     print(f"embeddings shape: {embeddings.shape}")
@@ -112,3 +136,9 @@ if __name__ == "__main__":
     print(f"representative_frames: {len(representative_frames)}")
 
     save_representative_frames(representative_frames)
+    
+    representative_frames = json.load(open("representative_frames.json"))
+    for item in representative_frames:
+        print(item["frame_id"], item["frame_path"])
+
+    plot_representative_frames(representative_frames, num_clusters)
