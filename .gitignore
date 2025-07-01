@@ -38,3 +38,4 @@ miniconda.sh
 semantic_memory_baseline/data_storage/
 semantic_memory_baseline/video.mp4
 semantic_memory_baseline/representative_frames.json
+*.json
