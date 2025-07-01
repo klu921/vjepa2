@@ -100,9 +100,9 @@ def save_representative_frames(representative_frames, output_path = "representat
 
 def plot_representative_frames(representative_frames, num_clusters):
     """
-    Plots the representative frames in a 4x5 grid
+    Plots the representative frames in a num_clusters // 5 x 5 grid
     """
-    fig, axs = plt.subplots(4, 5, figsize=(20, 16))
+    fig, axs = plt.subplots(num_clusters // 5, 5, figsize=(num_clusters //5 * 5, 16))
     axs = axs.flatten()
     
     sorted_frames = sorted(representative_frames, key=lambda x: x["frame_id"])
@@ -122,7 +122,7 @@ def plot_representative_frames(representative_frames, num_clusters):
 
 if __name__ == "__main__":
     
-    num_clusters = 10
+    num_clusters = 30
 
     embeddings = np.load("data_storage/all_embeddings.npy")
     print(f"embeddings shape: {embeddings.shape}")
