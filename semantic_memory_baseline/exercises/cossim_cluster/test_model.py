@@ -57,6 +57,7 @@ def test_identical_embeddings(model, frames_path):
 def test_embeddings_1_2(model, frames_path):
     """
       Extracts embeddings from frame 0 and frame 1
+      Finds the difference between these embeddings
     """
     embeddings = []
     processor = AutoVideoProcessor.from_pretrained(HF_MODEL_NAME)
@@ -90,14 +91,22 @@ def test_embeddings_1_2(model, frames_path):
         diff[i] = embeddings_0[i] - embeddings_1[i]
 
     print(f"diff: {diff}")
+    print(f"diff mean: {diff.mean()}")
+    print(f"diff std: {diff.std()}")
 
     np.save("data_storage/test_embeddings_1_2.npy", all_embeddings.numpy().astype(np.float16))
     
     return all_embeddings.numpy()
 
+def test_probe(model, probe):
+    """
+    Tests if the model performs well on the probe tasks.
+    """
+
+
 if __name__ == "__main__":
-    print("Testing identical embeddings")
+    print("Testing identical embeddings (frame 0 and 0)")
     test_identical_embeddings(model, "frames")
 
-    print("Testing embeddings 1 and 2")
+    print("Testing embeddings (frame 1 vs frame 2")
     test_embeddings_1_2(model, "frames")
