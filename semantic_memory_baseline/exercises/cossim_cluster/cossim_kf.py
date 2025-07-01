@@ -1,8 +1,3 @@
-import json
-import os
-import subprocess
-import einops
-
 import torch
 from transformers import AutoModel, AutoVideoProcessor
 import numpy as np
@@ -104,14 +99,6 @@ def get_cossim_embeddings(embeddings, frame_path):
     
     return frame_pairs
 
-def np_to_txt(np_array, file_name):
-    """
-    Converts a numpy array to a text file
-    Each row of the array becomes a line in the text file
-    """
-    # Load the .npy file and save as .txt
-    data = np.load(np_array) if isinstance(np_array, str) else np_array
-    np.savetxt(file_name, data, fmt='%.6f', delimiter=' ')
 
 
 if __name__ == "__main__":
@@ -129,4 +116,4 @@ if __name__ == "__main__":
     cosine_sims = get_cossim_embeddings(embeddings, frames_path)
 
     print(f"Computed cosine similarities for {len(cosine_sims)} frame pairs")    
-    
+
