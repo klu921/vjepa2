@@ -23,3 +23,13 @@ python-box
 scikit-image
 ftfy
 jupyter
+matplotlib
+seaborn
+seaborn-image
+tqdm
+requests
+openai
+google-generativeai
+tiktoken
+Pillow
+rich

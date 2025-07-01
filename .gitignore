@@ -34,3 +34,6 @@ configs/local
 data/LCVR_weights/
 
 miniconda.sh
+
+semantic_memory_baseline/data_storage/
+semantic_memory_baseline/video.mp4

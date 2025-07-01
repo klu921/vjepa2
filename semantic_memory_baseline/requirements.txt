@@ -1,0 +1,9 @@
+torch
+transformers
+decord
+numpy
+pillow
+torchvision
+torchaudio
+scikit-learn
+einops
