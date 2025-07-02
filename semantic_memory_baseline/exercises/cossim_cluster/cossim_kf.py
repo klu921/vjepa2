@@ -3,12 +3,15 @@ from transformers import AutoModel, AutoVideoProcessor
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+import clip
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+clip_model, preprocess = clip.load("ViT-B/32", device=device)
 
 HF_MODEL_NAME = "facebook/vjepa2-vitl-fpc64-256"
 
 
-model = AutoModel.from_pretrained(HF_MODEL_NAME).cuda().eval()
+hf_model = AutoModel.from_pretrained(HF_MODEL_NAME).cuda().eval()
 
 # used cmd: ffmpeg -i video.mp4 -vf fps=1 frames/frame_%04d.jpg : to extract frames
 
@@ -54,6 +57,32 @@ def extract_embeddings(model, frames_path, last_frame = 3598):
     np.save("data_storage/all_embeddings_vitl_256.npy", all_embeddings.numpy().astype(np.float16))
     
     return all_embeddings.numpy()
+
+def extract_clip_embeddings(model, frames_path, last_frame = 3598):
+    """
+      Extracts embeddings from a set of frames (frames_path) using specified model (model).
+      Processes each frame independently (lack temporal embeddings)
+      Returns an np array of the embeddings stacked by time along first dimension
+    """
+    embeddings = []
+    for i in range(1, last_frame + 1):
+        path = f"{frames_path}/frame_{i:04d}.jpg"
+        img = Image.open(path).convert("RGB")
+        img = preprocess(img).to(device)
+        with torch.no_grad():
+            image_features = model.encode_image(img.unsqueeze(0))
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            embeddings.append(image_features.cpu())
+            del img, image_features
+            torch.cuda.empty_cache()
+    
+    all_embeddings = torch.stack(embeddings, dim=0)
+    print(f"all_embeddings shape: {all_embeddings.shape}")
+    np.save("data_storage/all_embeddings_clip_vitb32.npy", all_embeddings.numpy().astype(np.float16))
+    return all_embeddings.numpy()
+
+
+
 
 def get_cossim_embeddings(embeddings, frame_path):
     """
@@ -166,13 +195,12 @@ if __name__ == "__main__":
     frames_path = "frames"  
     last_frame = 3598  # Adjust based on your video
     
-    """
+    
     print("Extracting embeddings...")
-    embedddings = extract_embeddings(model, frames_path, last_frame)
-    embeddings_file = "data_storage/all_embeddings_vitl_256.npy"
-    """
+    embeddings = extract_clip_embeddings(clip_model, frames_path, last_frame)
+    
     # Compute cosine similarities
-    embeddings_file = "data_storage/all_embeddings_vitl_256.npy"
+    embeddings_file = "data_storage/all_embeddings_clip_vitb32.npy"
     embeddings = np.load(embeddings_file)
 
     print("Computing cosine similarities...")

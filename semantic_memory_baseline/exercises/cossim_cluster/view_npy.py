@@ -36,7 +36,5 @@ def plot_npy(np_array, title):
 
 
 if __name__ == "__main__":
-    plot_npy("cosine_similarities.npy", "Cosine Similarity")
-    plot_npy("averaged_l1_distances.npy", "L1")
-    plot_npy("averaged_l2_distances.npy", "L2")
+    plot_npy("cosine_similarities.npy", "CLIP_cosine_similarity")
     #view_npy("data_storage/all_embeddings_vitl_256.npy")

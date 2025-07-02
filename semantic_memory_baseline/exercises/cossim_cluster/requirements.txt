@@ -8,3 +8,5 @@ torchaudio
 scikit-learn
 einops
 matplotlib
+openai-clip
+openai
