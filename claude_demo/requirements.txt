@@ -1,0 +1,13 @@
+torch
+torchvision
+transformers
+opencv-python
+pillow
+numpy
+pandas
+sentence-transformers
+faiss-cpu
+gradio
+tqdm
+accelerate
+datasets

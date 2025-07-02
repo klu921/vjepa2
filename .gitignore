@@ -39,3 +39,7 @@ semantic_memory_baseline/data_storage/
 semantic_memory_baseline/video.mp4
 semantic_memory_baseline/representative_frames.json
 *.json
+
+claude_demo/data/
+claude_demo/video.mp4
+*.mp4
