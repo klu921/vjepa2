@@ -101,19 +101,83 @@ def get_cossim_embeddings(embeddings, frame_path):
 
 
 
+def get_l1_l2_embeddings(embeddings, frame_path):
+    """
+    Gets L1 and L2 embeddings between each pair of adjacent frames
+    """
+    # convert to tensor
+    if isinstance(embeddings, np.ndarray):
+        embeddings = torch.from_numpy(embeddings) # [3600, 256, features]
+
+    # pairs_1 is the first frame of each pair, pairs_2 is the second frame of each pair
+    pairs_1 = embeddings[:-1]  # [3599, 256, features]
+    pairs_2 = embeddings[1:]   # [3599, 256, features]
+
+    l1_distances = torch.sum(torch.abs(pairs_1 - pairs_2), dim = -1)
+    print("l1 distance", l1_distances[:10])
+    print("l1 distance shape", l1_distances.shape)    
+    l2_distances = torch.sqrt(torch.sum((pairs_1 - pairs_2) * (pairs_1 - pairs_2), dim = -1))
+    print("l2 distance", l2_distances[:10])
+    print("l2 distance shape", l2_distances.shape)
+
+    patched_l1 = np.column_stack([
+        np.arange(1, len(l1_distances) + 1),  # (1, 2, 3, ...)
+        np.arange(2, len(l1_distances) + 2),  # (2, 3, 4, ...)
+        l1_distances.numpy()  # cosine similarities
+    ])
+
+    patched_l2 = np.column_stack([
+        np.arange(1, len(l2_distances) + 1),  # (1, 2, 3, ...)
+        np.arange(2, len(l2_distances) + 2),  # (2, 3, 4, ...)
+        l2_distances.numpy()  # cosine similarities
+    ])
+
+    np.save("frame_patch_l1_distances.npy", patched_l1)
+    np.save("frame_patch_l2_distances.npy", patched_l2)
+  
+    averaged_l1 = np.mean(l1_distances.numpy(), axis = -1)
+    averaged_l2 = np.mean(l2_distances.numpy(), axis = -1)
+
+    print("averaged l1", averaged_l1[:10])
+    print("averaged l2", averaged_l2[:10])
+
+    # create array with frame pairs and cosine similarities
+    l1 = np.column_stack([
+        np.arange(1, len(l1_distances) + 1),  # (1, 2, 3, ...)
+        np.arange(2, len(l1_distances) + 2),  # (2, 3, 4, ...)
+        averaged_l1  # cosine similarities
+    ])
+
+    l2 = np.column_stack([
+        np.arange(1, len(l2_distances) + 1),  # (1, 2, 3, ...)
+        np.arange(2, len(l2_distances) + 2),  # (2, 3, 4, ...)
+        averaged_l2  # cosine similarities
+    ])
+
+    # save the cosine similarities with frame pairs
+    np.save("averaged_l1_distances.npy", l1)
+    np.save("averaged_l2_distances.npy", l2)
+    
+    return averaged_l1, averaged_l2
+
+
 if __name__ == "__main__":
 
     frames_path = "frames"  
     last_frame = 3598  # Adjust based on your video
     
+    """
     print("Extracting embeddings...")
     embedddings = extract_embeddings(model, frames_path, last_frame)
     embeddings_file = "data_storage/all_embeddings_vitl_256.npy"
+    """
+    # Compute cosine similarities
+    embeddings_file = "data_storage/all_embeddings_vitl_256.npy"
     embeddings = np.load(embeddings_file)
 
-    # Compute cosine similarities
     print("Computing cosine similarities...")
     cosine_sims = get_cossim_embeddings(embeddings, frames_path)
+    averaged_l1, averaged_l2 = get_l1_l2_embeddings(embeddings, frames_path)
 
     print(f"Computed cosine similarities for {len(cosine_sims)} frame pairs")    
 
