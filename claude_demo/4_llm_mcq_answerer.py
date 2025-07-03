@@ -1,3 +1,21 @@
+"""
+This file contains the LLM MCQ Answerer.
+
+def __init__(): initialize model, tokenizer, device
+def answer_mcq_with_captions(): [question, choices, captions -> answer]
+def format_captions(): [list of captions -> formatted captions in frame: timestep: caption]
+def create_mcq_prompt(): [question, choices, captions -> structured prompt for LLM to answer]
+
+
+
+Need to build:
+#TODO: Find best way to get key frames
+def get_key_frames(): [list of captions, question -> list of frames]
+def gen_specific_prompt(): [question + answer choices -> prompt]
+
+later on:
+some measure of confidence in answer, if not we loop back
+"""
 import json
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
@@ -5,6 +23,7 @@ from typing import List, Dict, Any
 import os
 
 class LLMMCQAnswerer:
+
     def __init__(self, model_name: str = "microsoft/phi-2",):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -107,10 +126,10 @@ ANSWER CHOICES:
 {choices_formatted}
 
 Instructions: 
-1. First, carefully analyze the video frame descriptions and identify any relevant spatial information
+1. First, carefully analyze the video frame descriptions and identify any spatial information that is relevant to the question
 2. Think step by step about what spatial relationships or locations are mentioned
 3. Consider each answer choice and evaluate it against the evidence from the video
-4. Choose the answer that best matches what is shown in the video
+4. Choose the answer that best matches what is shown in the video, and justify your answer.
 5. Please present your answer in the format of "The correct answer is: [answer]"
 
 Let me think step by step:

@@ -1,3 +1,12 @@
+"""
+This file contains all functions for IMAGE CAPTIONING.
+
+def __init__(): initializes the VLM model and processor
+def caption_image(): [path to image, image prompt -> image caption] Captions a single image according to a list of injectible prompt.
+def caption_frames(): [list of frames: [timestamp, path to image, image array] -> list of captions] Captions a list of frames, using caption_image.
+def save_captions(): [list of captions -> path to json file] Saves a list of captions to a json file.
+"""
+
 from transformers import InstructBlipProcessor, InstructBlipForConditionalGeneration, AutoProcessor, AutoModelForCausalLM
 from PIL import Image
 import torch
@@ -23,36 +32,25 @@ class ImageCaptioner:
         self.processor = InstructBlipProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
         self.model = InstructBlipForConditionalGeneration.from_pretrained(model_name, cache_dir=CACHE_DIR).to(self.device)   
 
-    def caption_image(self, image_path: str, prompt: str = None) -> str:
+    def caption_image(self, image_path: str, prompt: str) -> str:
         """
         Generate detailed caption for a single image using InstructBLIP-XL
         """
-        prompts = [
-            "Describe the central objects in this image, how they are positioned, interact with each other, and how they relate to the background.Also, describe the setting, environment, and background of this image in great depth.",
-            "What are the people doing in this image? Describe their actions and interactions. Describe any text, signs, or written content visible in this image.",
-            "Generate a summary of this image as if you're preparing for a spatial intelligence task, where questions will ask about navigation, location, and orientation.",
-        ]
         
-        captions = ""
-
         try:
             image = Image.open(image_path).convert('RGB')
-            for prompt in prompts:
-
-                inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
-                
-                with torch.no_grad():
-                    generated_ids = self.model.generate(
-                        **inputs, 
-                        max_new_tokens=150, 
-                        do_sample=False,
-                        num_beams=3
-                    )
+            inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
             
-                caption = self.processor.decode(generated_ids[0], skip_special_tokens=True)
-                captions = captions + " " + caption
-
-            return captions
+            with torch.no_grad():
+                generated_ids = self.model.generate(
+                    **inputs, 
+                    max_new_tokens=250, 
+                    do_sample=False,
+                    num_beams=3
+                )
+        
+            caption = self.processor.decode(generated_ids[0], skip_special_tokens=True)
+        return caption
             
         except Exception as e:
             print(f"Error captioning image {image_path}: {e}")
@@ -60,17 +58,16 @@ class ImageCaptioner:
     
    
     
-    def caption_frames(self, frame_data: List[tuple]) -> List[Dict[str, Any]]:
+    def caption_frames(self, frame_data: List[tuple], prompt: str) -> List[Dict[str, Any]]:
         """
         frame_data: List of (timestamp, frame_path, frame_array) tuples
-        batch_size: Number of images to process in parallel (auto-calculated based on GPU count)
         """
         
         captioned_frames = []
         
         for i in range(0, len(frame_data)):
-            img = frame_data[i][1]
-            caption = self.caption_image(img)
+            img = frame_data[i][1] # path to image
+            caption = self.caption_image(img, prompt)
             captioned_frames.append({
                 'timestamp': frame_data[i][0],
                 'frame_path': frame_data[i][1],

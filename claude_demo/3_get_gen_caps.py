@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Video Understanding Framework
-A complete system for extracting frames, generating captions, and answering questions about videos
+Pathway: Video ----frame-extractor ----> frames ----captioner ----> general captions
+
+def __init__(): initialize video path, frame directory, caption file, frame extractor, captioner.
+def process_video(): extract frames if they don't already exist, generate captions, save captions.
 """
 
 import os
@@ -14,7 +16,7 @@ import time
 
 from transformers import AutoProcessor, AutoModelForImageTextToText
 
-class VideoUnderstandingFramework:
+class get_general_captions:
     def __init__(self, video_path: str):
         """
         Initialize the complete video understanding framework
@@ -26,11 +28,13 @@ class VideoUnderstandingFramework:
         # Initialize components
         self.frame_extractor = None
         self.captioner = None
-        self.qa_system = None
         
         # Data storage
         self.frames_data = []
         self.captioned_frames = []
+
+        #TODO: Design the best possible prompt for general captioning that represents the image well
+        self.GENERAL_PROMPT = "Generate a list of objects in the image, their positions, and their relationships to each other."
         
     def process_video(self, interval_seconds: int = 3, save_captions: bool = True) -> bool:
         """
@@ -66,11 +70,11 @@ class VideoUnderstandingFramework:
             print(f"Error extracting frames: {e}")
             return False
         
-        # Step 2: Generate captions
+        # generate captions
         print("\n=== STEP 2: Generating Captions ===")
         try:
             self.captioner = ImageCaptioner()
-            self.captioned_frames = self.captioner.caption_frames(self.frames_data)
+            self.captioned_frames = self.captioner.caption_frames(self.frames_data, self.GENERAL_PROMPT)
             
             if save_captions:
                 self.captioner.save_captions(self.captioned_frames, self.captions_file)
@@ -86,7 +90,7 @@ def main():
     """
     Main function to run the video understanding framework
     """
-    video_path = "video.mp4"
+    video_path = "video/video.mp4"
     
     if not os.path.exists(video_path):
         print(f"Error: Video file '{video_path}' not found in current directory")

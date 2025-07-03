@@ -37,10 +37,7 @@ def load_spatial_reasoning_dataset(dataset_path: str = "spatial_reasoning_datase
     return questions
 
 def test_llm_mcq_answerer():
-    """Test LLM approach vs baseline similarity approach"""
-    
-    print("=== Testing LLM MCQ Answerer vs Baseline ===")
-    
+        
     # Load dataset and captions
     questions = load_spatial_reasoning_dataset()
     captions = load_video_captions()
