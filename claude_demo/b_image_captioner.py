@@ -7,7 +7,7 @@ def caption_frames(): [list of frames: [timestamp, path to image, image array] -
 def save_captions(): [list of captions -> path to json file] Saves a list of captions to a json file.
 """
 
-from transformers import InstructBlipProcessor, InstructBlipForConditionalGeneration, AutoProcessor, AutoModelForCausalLM
+from transformers import InstructBlipProcessor, InstructBlipForConditionalGeneration, AutoProcessor, AutoModelForCausalLM, AutoModelForImageTextToText
 from PIL import Image
 import torch
 from typing import List, Dict, Any
@@ -17,20 +17,30 @@ import os
 # Set custom cache directory for model weights
 os.makedirs("data/", exist_ok=True)
 
-CACHE_DIR = "data/instructblip_xl_weights"
+CACHE_DIR = "data/qwen_vl_7b_instruct_weights"
 
-processor = InstructBlipProcessor.from_pretrained("Salesforce/instructblip-flan-t5-xl", cache_dir=CACHE_DIR)
-model = InstructBlipForConditionalGeneration.from_pretrained("Salesforce/instructblip-flan-t5-xl", cache_dir=CACHE_DIR)
+# Global model instantiation removed - moved to class
 
 class ImageCaptioner:
-    def __init__(self, model_name: str = "Salesforce/instructblip-flan-t5-xl"):
+    def __init__(self, model_name: str = "Qwen/Qwen2-VL-7B-Instruct"):
         """
         Initialize the image captioning model
-        Using InstructBLIP-XL for detailed, prompted image captioning with multi-GPU support
+        Using Qwen2-VL-7B on single GPU
         """
+        print(f"Loading model {model_name} on single GPU...")
+        print(f"Available GPUs: {torch.cuda.device_count()}")
+        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor = InstructBlipProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
-        self.model = InstructBlipForConditionalGeneration.from_pretrained(model_name, cache_dir=CACHE_DIR).to(self.device)   
+        self.processor = AutoProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
+        self.model = AutoModelForImageTextToText.from_pretrained(
+            model_name, 
+            cache_dir=CACHE_DIR,
+            torch_dtype=torch.float16,
+            trust_remote_code=True
+        ).to(self.device)
+        
+        print(f"Model loaded on device: {self.device}")
+        self.model.eval()   
 
     def caption_image(self, image_path: str, prompt: str) -> str:
         """
@@ -39,18 +49,33 @@ class ImageCaptioner:
         
         try:
             image = Image.open(image_path).convert('RGB')
-            inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(self.device)
+            
+            # Format the prompt properly for Qwen VL
+            formatted_prompt = f"<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            
+            inputs = self.processor(
+                images=image, 
+                text=formatted_prompt, 
+                return_tensors="pt",
+                padding=True
+            )
+            
+            # Move inputs to same device as model
+            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
             
             with torch.no_grad():
                 generated_ids = self.model.generate(
                     **inputs, 
                     max_new_tokens=250, 
                     do_sample=False,
-                    num_beams=3
+                    num_beams=1,
+                    pad_token_id=self.processor.tokenizer.eos_token_id
                 )
         
-            caption = self.processor.decode(generated_ids[0], skip_special_tokens=True)
-        return caption
+            # Decode only the new tokens (skip the input prompt)
+            input_length = inputs['input_ids'].shape[1]
+            generated_text = self.processor.decode(generated_ids[0][input_length:], skip_special_tokens=True)
+            return generated_text.strip()
             
         except Exception as e:
             print(f"Error captioning image {image_path}: {e}")

@@ -76,11 +76,12 @@ def test_llm_mcq_answerer():
             answers_file.write("\n")
             
             try:
-                # Use LLM to answer
-                result = llm_answerer.answer_mcq_with_captions(
+                # Use enhanced LLM workflow to answer
+                result = llm_answerer.answer_mcq_with_enhanced_workflow(
                     question=q['question'],
                     choices=q['choices'],
-                    captions=captions, 
+                    captions=captions,
+                    k=3  # Use top 3 most relevant frames
                 )
                 
                 result.update({

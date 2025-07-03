@@ -21,31 +21,26 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from typing import List, Dict, Any
 import os
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 class LLMMCQAnswerer:
 
-    def __init__(self, model_name: str = "microsoft/phi-2",):
+    def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.1",):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        cache_dir = "data/phi_2_weights"
+        cache_dir = "data/mistral_7b_instruct_weights"
         os.makedirs(cache_dir, exist_ok=True)
         
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, 
-            trust_remote_code=True,
-            cache_dir=cache_dir
-        )
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-            cache_dir=cache_dir,
-            low_cpu_mem_usage=True
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
         self.model.to(self.device)
+        
+        # Initialize sentence transformer for finding key frames
+        self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     
     def answer_mcq_with_captions(self, 
@@ -145,7 +140,118 @@ Based on my analysis, the correct answer is"""
         
         return prompt
     
+    def get_key_frames(self, captions: List[Dict], question: str, k: int = 5) -> List[Dict]:
+        """
+        Find the top k most related key frames from captions based on the question
+        
+        Args:
+            captions: List of caption dictionaries with frame info
+            question: The question to find relevant frames for
+            k: Number of top frames to return
+            
+        Returns:
+            List of k most relevant caption dictionaries
+        """
+        if not captions:
+            return []
+            
+        # Extract caption text from each frame
+        caption_texts = []
+        for cap_data in captions:
+            caption_text = cap_data.get('captions', '')
+            if isinstance(caption_text, dict):
+                # Handle case where captions is a dict
+                caption_text = str(caption_text)
+            caption_texts.append(caption_text)
+        
+        # Encode question and captions
+        question_embedding = self.sentence_model.encode([question])
+        caption_embeddings = self.sentence_model.encode(caption_texts)
+        
+        # Calculate cosine similarity
+        similarities = cosine_similarity(question_embedding, caption_embeddings)[0]
+        
+        # Get top k indices
+        top_k_indices = np.argsort(similarities)[-k:][::-1]
+        
+        # Return top k frames
+        key_frames = [captions[i] for i in top_k_indices]
+        
+        return key_frames
+
     
+    def gen_specific_prompt(self, question: str, choices: List[str]) -> str:
+        """
+        Generate a specific prompt for recaptioning frames based on the question and choices
+        
+        Args:
+            question: The question to answer
+            choices: List of answer choices
+            
+        Returns:
+            Specific prompt for image captioning focused on the question
+        """
+        choices_text = ", ".join(choices)
+        
+        prompt = f"""Based on this question: "{question}" with choices: {choices_text}, 
+        describe this image in detail focusing on:
+        - Spatial relationships and positions of objects/people
+        - Specific objects, actions, or scenes mentioned in the question
+        - Any details that would help answer the multiple choice question
+        - Location and arrangement of items in the scene
+        
+        Provide a detailed description that would help determine the correct answer."""
+        
+        return prompt
+    
+    def answer_mcq_with_enhanced_workflow(self, 
+                                        question: str, 
+                                        choices: List[str], 
+                                        captions: List[Dict],
+                                        k: int = 3) -> Dict[str, Any]:
+        """
+        Enhanced MCQ answering workflow:
+        1. Find top k most related key frames
+        2. Generate specific prompts for recaptioning
+        3. Recaption the key frames with specific prompts
+        4. Answer the MCQ using the enhanced captions
+        
+        Args:
+            question: The question to answer
+            choices: List of answer choices
+            captions: List of caption dictionaries with frame info
+            k: Number of key frames to use
+            
+        Returns:
+            Dict with predicted answer, confidence, and reasoning
+        """
+        from image_captioner import ImageCaptioner
+        
+        # Step 1: Find key frames
+        key_frames = self.get_key_frames(captions, question, k)
+        
+        # Step 2: Generate specific prompt for recaptioning
+        specific_prompt = self.gen_specific_prompt(question, choices)
+        
+        # Step 3: Recaption key frames with specific prompt
+        captioner = ImageCaptioner()
+        enhanced_captions = []
+        
+        for frame_data in key_frames:
+            frame_path = frame_data.get('frame_path', '')
+            timestamp = frame_data.get('timestamp', 0)
+            
+            if frame_path and os.path.exists(frame_path):
+                # Generate enhanced caption
+                enhanced_caption = captioner.caption_image(frame_path, specific_prompt)
+                enhanced_captions.append({
+                    'timestamp': timestamp,
+                    'frame_path': frame_path,
+                    'captions': enhanced_caption
+                })
+        
+        # Step 4: Answer MCQ with enhanced captions
+        return self.answer_mcq_with_captions(question, choices, enhanced_captions)
 
 
 def load_video_captions(captions_file: str = "data/video_captions.json") -> List[Dict]:
@@ -161,7 +267,7 @@ def load_video_captions(captions_file: str = "data/video_captions.json") -> List
 
 if __name__ == "__main__":
     # Example usage
-    answerer = LLMMCQAnswerer("microsoft/phi-2")
+    answerer = LLMMCQAnswerer("mistralai/Mistral-7B-Instruct-v0.1")
     
     # Load your video captions
     captions = load_video_captions()

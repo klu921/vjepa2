@@ -11,3 +11,4 @@ gradio
 tqdm
 accelerate
 datasets
+scikit-learn
