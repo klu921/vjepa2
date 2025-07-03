@@ -70,7 +70,7 @@ class VideoUnderstandingFramework:
         print("\n=== STEP 2: Generating Captions ===")
         try:
             self.captioner = ImageCaptioner()
-            self.captioned_frames = self.captioner.batch_caption_frames(self.frames_data)
+            self.captioned_frames = self.captioner.caption_frames(self.frames_data)
             
             if save_captions:
                 self.captioner.save_captions(self.captioned_frames, self.captions_file)
