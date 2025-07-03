@@ -1,0 +1,172 @@
+import json
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from typing import List, Dict, Any
+import os
+
+class LLMMCQAnswerer:
+    def __init__(self, model_name: str = "microsoft/phi-2",):
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        cache_dir = "data/phi_2_weights"
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, 
+            trust_remote_code=True,
+            cache_dir=cache_dir
+        )
+        
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name, 
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+            cache_dir=cache_dir,
+            low_cpu_mem_usage=True
+        )
+
+        self.model.to(self.device)
+
+    
+    def answer_mcq_with_captions(self, 
+                                question: str, 
+                                choices: List[str], 
+                                captions: List[Dict]) -> Dict[str, Any]:
+        """
+        Answer MCQ using relevant video captions
+        
+        Args:
+            question: The question to answer
+            choices: List of answer choices (A, B, C, D, etc.)
+            relevant_captions: List of caption dictionaries with frame info
+        
+        Returns:
+            Dict with predicted answer, confidence, and reasoning
+        """
+        # Format captions, prompt for the model
+        caption_text = self._format_captions(captions) #
+        prompt = self._create_mcq_prompt(question, choices, caption_text) #creates a well-structured prompt
+
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=300,  # Increased for chain-of-thought reasoning
+                temperature=0.3,  # Lower temperature for more focused answers
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
+        
+        # Decode only the new tokens (remove input prompt)
+        input_length = inputs.input_ids.shape[1]
+        generated_tokens = outputs[0][input_length:]
+        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        predicted_answer = ""
+        try:
+            predicted_answer = response.split("The correct answer is: ")[1]
+        except IndexError:
+            predicted_answer = "No answer found"
+            
+        return {
+            "predicted_answer": predicted_answer,
+            "full_response": response,
+            "reasoning": response
+        }
+        
+    
+    def _format_captions(self, captions: List[Dict]) -> str:
+        """Format captions into readable text for LLM"""
+        formatted = []
+        
+        for i, cap_data in enumerate(captions):
+            timestamp = cap_data.get('timestamp', 0)
+            captions_dict = cap_data.get('captions', {})
+            #TODO: FINISH THIS UP
+            for caption in captions_dict:
+                formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption}")
+                
+        return "\n".join(formatted)
+
+    
+    def _create_mcq_prompt(self, question: str, choices: List[str], captions: str) -> str:
+        """Create a well-structured prompt for MCQ answering with chain-of-thought"""
+        
+        choices_formatted = "\n".join([f"{chr(65+i)}. {choice}" for i, choice in enumerate(choices)])
+        
+        prompt = f"""Based on the following video frame descriptions, answer the multiple choice question.
+
+VIDEO FRAME DESCRIPTIONS:
+{captions}
+
+QUESTION: {question}
+
+ANSWER CHOICES:
+{choices_formatted}
+
+Instructions: 
+1. First, carefully analyze the video frame descriptions and identify any relevant spatial information
+2. Think step by step about what spatial relationships or locations are mentioned
+3. Consider each answer choice and evaluate it against the evidence from the video
+4. Choose the answer that best matches what is shown in the video
+5. Please present your answer in the format of "The correct answer is: [answer]"
+
+Let me think step by step:
+
+Step 1 - Analyzing the video descriptions:
+[Analyze what spatial information is available in the frame descriptions]
+
+Step 2 - Evaluating each choice:
+[Go through each option A, B, C, D, E and evaluate based on the evidence]
+
+Step 3 - Final answer:
+Based on my analysis, the correct answer is"""
+        
+        return prompt
+    
+    
+
+
+def load_video_captions(captions_file: str = "data/video_captions.json") -> List[Dict]:
+    """Load video captions from JSON file"""
+    with open(captions_file, 'r') as f:
+        return json.load(f)
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    # Example usage
+    answerer = LLMMCQAnswerer("microsoft/phi-2")
+    
+    # Load your video captions
+    captions = load_video_captions()
+    
+    # Example MCQ
+    sample_mcq = {
+        "question": "What is the person in the video doing?",
+        "choices": [
+            "Cooking in the kitchen",
+            "Eating breakfast at a table", 
+            "Reading a book",
+            "Watching television"
+        ],
+        "correct_answer": "B"
+    }
+    
+    result = answerer.answer_mcq_with_captions(
+        question=sample_mcq["question"],
+        choices=sample_mcq["choices"],
+        relevant_captions=captions[:3]  # Use first 3 captions
+    )
+    
+    print("MCQ Result:")
+    print(f"Question: {sample_mcq['question']}")
+    print(f"Predicted Answer: {result['predicted_answer']}")
+    print(f"Confidence: {result['confidence']:.2f}")
+    print(f"Reasoning: {result['reasoning']}")
