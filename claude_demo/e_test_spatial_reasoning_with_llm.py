@@ -6,11 +6,11 @@ Compares the LLM approach vs the existing similarity-based approach
 
 import pandas as pd
 import json
-from llm_mcq_answerer import LLMMCQAnswerer, load_video_captions
+from d_llm_mcq_answerer import LLMMCQAnswerer, load_video_captions
 from typing import List, Dict, Any
 import re
 
-def load_spatial_reasoning_dataset(dataset_path: str = "spatial_reasoning_dataset.csv") -> List[Dict]:
+def load_spatial_reasoning_dataset(dataset_path: str = "question_set/spatial_reasoning_dataset.csv") -> List[Dict]:
     """Load and parse spatial reasoning questions from CSV"""
     df = pd.read_csv(dataset_path)
     
@@ -45,7 +45,7 @@ def test_llm_mcq_answerer():
     print(f"Loaded {len(questions)} questions and {len(captions)} captions")
     
     try:
-        llm_answerer = LLMMCQAnswerer("microsoft/phi-2")
+        llm_answerer = LLMMCQAnswerer("mistralai/Mistral-7B-Instruct-v0.1")
     except Exception as e:
         print(f"Failed to initialize LLM: {e}")
         return
@@ -94,6 +94,7 @@ def test_llm_mcq_answerer():
                 
                 # Show brief result
                 print(f"\nLLM Answer: {result['predicted_answer']}")
+                print(f"LLM Full Reasoning:\n{result['reasoning']}")
                 
                 # Write detailed result to file
                 answers_file.write(f"LLM Answer: {result['predicted_answer']}\n")

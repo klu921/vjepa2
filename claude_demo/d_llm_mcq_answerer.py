@@ -18,7 +18,7 @@ some measure of confidence in answer, if not we loop back
 """
 import json
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, AutoModelForImageTextToText, AutoProcessor
 from typing import List, Dict, Any
 import os
 import numpy as np
@@ -29,15 +29,26 @@ class LLMMCQAnswerer:
 
     def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.1",):
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Use exactly 2 GPUs
+        if torch.cuda.device_count() >= 2:
+            self.use_model_parallel = True
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.use_model_parallel = False
 
         cache_dir = "data/mistral_7b_instruct_weights"
         os.makedirs(cache_dir, exist_ok=True)
         
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
-
-        self.model.to(self.device)
+        
+        if self.use_model_parallel:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name, 
+                device_map="auto"  # Use only GPU 0 and 1
+            )
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            self.model.to(self.device)
         
         # Initialize sentence transformer for finding key frames
         self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -62,7 +73,11 @@ class LLMMCQAnswerer:
         caption_text = self._format_captions(captions) #
         prompt = self._create_mcq_prompt(question, choices, caption_text) #creates a well-structured prompt
 
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        if self.use_model_parallel:
+            first_device = next(self.model.parameters()).device
+            inputs = self.tokenizer(prompt, return_tensors = "pt").to(first_device)
+        else:
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         
         with torch.no_grad():
             outputs = self.model.generate(
@@ -84,6 +99,9 @@ class LLMMCQAnswerer:
         except IndexError:
             predicted_answer = "No answer found"
             
+        # Clear CUDA memory after each question
+        torch.cuda.empty_cache()
+        
         return {
             "predicted_answer": predicted_answer,
             "full_response": response,
@@ -225,7 +243,7 @@ Based on my analysis, the correct answer is"""
         Returns:
             Dict with predicted answer, confidence, and reasoning
         """
-        from image_captioner import ImageCaptioner
+        from b_image_captioner import ImageCaptioner
         
         # Step 1: Find key frames
         key_frames = self.get_key_frames(captions, question, k)
@@ -251,7 +269,12 @@ Based on my analysis, the correct answer is"""
                 })
         
         # Step 4: Answer MCQ with enhanced captions
-        return self.answer_mcq_with_captions(question, choices, enhanced_captions)
+        result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
+        
+        # Clear CUDA memory
+        torch.cuda.empty_cache()
+        
+        return result
 
 
 def load_video_captions(captions_file: str = "data/video_captions.json") -> List[Dict]:

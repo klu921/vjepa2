@@ -25,21 +25,35 @@ class ImageCaptioner:
     def __init__(self, model_name: str = "Qwen/Qwen2-VL-7B-Instruct"):
         """
         Initialize the image captioning model
-        Using Qwen2-VL-7B on single GPU
+        Using Qwen2-VL-7B across 2 GPUs
         """
-        print(f"Loading model {model_name} on single GPU...")
         print(f"Available GPUs: {torch.cuda.device_count()}")
         
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor = AutoProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
-        self.model = AutoModelForImageTextToText.from_pretrained(
-            model_name, 
-            cache_dir=CACHE_DIR,
-            torch_dtype=torch.float16,
-            trust_remote_code=True
-        ).to(self.device)
+        if torch.cuda.device_count() >= 2:
+            self.use_model_parallel = True
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.use_model_parallel = False
         
-        print(f"Model loaded on device: {self.device}")
+        self.processor = AutoProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
+        
+        if self.use_model_parallel:
+            self.model = AutoModelForImageTextToText.from_pretrained(
+                model_name, 
+                cache_dir=CACHE_DIR,
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+                device_map="auto"  # Use only GPU 0 and 1
+            )
+        else:
+            self.model = AutoModelForImageTextToText.from_pretrained(
+                model_name, 
+                cache_dir=CACHE_DIR,
+                torch_dtype=torch.float16,
+                trust_remote_code=True
+            ).to(self.device)
+        
+        print(f"Model loaded successfully")
         self.model.eval()   
 
     def caption_image(self, image_path: str, prompt: str) -> str:
@@ -61,7 +75,12 @@ class ImageCaptioner:
             )
             
             # Move inputs to same device as model
-            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            if self.use_model_parallel:
+                first_device = next(self.model.parameters()).device
+                inputs = {k: v.to(first_device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+
+            else:
+                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
             
             with torch.no_grad():
                 generated_ids = self.model.generate(
@@ -75,6 +94,10 @@ class ImageCaptioner:
             # Decode only the new tokens (skip the input prompt)
             input_length = inputs['input_ids'].shape[1]
             generated_text = self.processor.decode(generated_ids[0][input_length:], skip_special_tokens=True)
+            
+            # Clear CUDA memory after each image
+            torch.cuda.empty_cache()
+            
             return generated_text.strip()
             
         except Exception as e:
