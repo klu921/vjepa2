@@ -138,24 +138,12 @@ QUESTION: {question}
 ANSWER CHOICES:
 {choices_formatted}
 
-Instructions: 
-1. First, carefully analyze the video frame descriptions and identify any spatial information that is relevant to the question
-2. Think step by step about what spatial relationships or locations are mentioned
-3. Consider each answer choice and evaluate it against the evidence from the video
-4. Choose the answer that best matches what is shown in the video, and justify your answer.
-5. Please present your answer in the format of "The correct answer is: [answer]"
+Instructions: For the following, please think out loud, write down all your reasoning, and add it to a "reasoning" section numbered 1 to 4.
+1. First, carefully analyze the video frame descriptions and identify any spatial information that is relevant to the question, and think out loud.
+3. Consider each answer choice, and evaluate it against the evidence from the video out loud.
+4. Choose the answer that best matches what is shown in the video, and justify your answer out loud.
+5. Finally, please present your answer in the format of "The correct answer is: [answer]" """
 
-Let me think step by step:
-
-Step 1 - Analyzing the video descriptions:
-[Analyze what spatial information is available in the frame descriptions]
-
-Step 2 - Evaluating each choice:
-[Go through each option A, B, C, D, E and evaluate based on the evidence]
-
-Step 3 - Final answer:
-Based on my analysis, the correct answer is"""
-        
         return prompt
     
     def get_key_frames(self, captions: List[Dict], question: str, k: int = 5) -> List[Dict]:
@@ -211,15 +199,8 @@ Based on my analysis, the correct answer is"""
         """
         choices_text = ", ".join(choices)
         
-        prompt = f"""Based on this question: "{question}" with choices: {choices_text}, 
-        describe this image in detail focusing on:
-        - Spatial relationships and positions of objects/people
-        - Specific objects, actions, or scenes mentioned in the question
-        - Any details that would help answer the multiple choice question
-        - Location and arrangement of items in the scene
-        
-        Provide a detailed description that would help determine the correct answer."""
-        
+        prompt = f"""Read this question: "{question}" and choices: {choices_text}.
+        If the objects in the question and choices are related to the frame, describe them based only on the frame in great detail. Write a caption that might help answer the question."""
         return prompt
     
     def answer_mcq_with_enhanced_workflow(self, 
@@ -228,7 +209,6 @@ Based on my analysis, the correct answer is"""
                                         captions: List[Dict],
                                         k: int = 3) -> Dict[str, Any]:
         """
-        Enhanced MCQ answering workflow:
         1. Find top k most related key frames
         2. Generate specific prompts for recaptioning
         3. Recaption the key frames with specific prompts
@@ -255,18 +235,24 @@ Based on my analysis, the correct answer is"""
         captioner = ImageCaptioner()
         enhanced_captions = []
         
-        for frame_data in key_frames:
-            frame_path = frame_data.get('frame_path', '')
-            timestamp = frame_data.get('timestamp', 0)
+        #TODO: move the pipeline to inside the file-writer, so this actually runs correctly + not rerun.
+        with open("key_frames.txt", "w") as key_frames_file:
+            key_frames_file.write("Key Frames for Questions: \n")
+            key_frames_file.write("=" * 60 + "\n\n") 
             
-            if frame_path and os.path.exists(frame_path):
-                # Generate enhanced caption
-                enhanced_caption = captioner.caption_image(frame_path, specific_prompt)
-                enhanced_captions.append({
-                    'timestamp': timestamp,
-                    'frame_path': frame_path,
-                    'captions': enhanced_caption
-                })
+            for frame_data in key_frames:
+                frame_path = frame_data.get('frame_path', '')
+                timestamp = frame_data.get('timestamp', 0)
+                
+                if frame_path and os.path.exists(frame_path):
+                    # Generate enhanced caption
+                    enhanced_caption = captioner.caption_image(frame_path, specific_prompt)
+                    enhanced_captions.append({
+                        'timestamp': timestamp,
+                        'frame_path': frame_path,
+                        'captions': enhanced_caption
+                    })
+                    key_frames_file.write(f"Frame {timestamp}: {enhanced_caption}\n")
         
         # Step 4: Answer MCQ with enhanced captions
         result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
@@ -281,10 +267,6 @@ def load_video_captions(captions_file: str = "data/video_captions.json") -> List
     """Load video captions from JSON file"""
     with open(captions_file, 'r') as f:
         return json.load(f)
-
-
-
-
 
 
 

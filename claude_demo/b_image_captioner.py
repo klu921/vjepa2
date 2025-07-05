@@ -27,13 +27,13 @@ class ImageCaptioner:
         Initialize the image captioning model
         Using Qwen2-VL-7B across 2 GPUs
         """
-        print(f"Available GPUs: {torch.cuda.device_count()}")
         
         if torch.cuda.device_count() >= 2:
             self.use_model_parallel = True
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.use_model_parallel = False
+        
         
         self.processor = AutoProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
         

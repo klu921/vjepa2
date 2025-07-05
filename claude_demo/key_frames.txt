@@ -1,0 +1,6 @@
+Key Frames for Questions: 
+============================================================
+
+Frame 687.0: The kitchen is very messy and has a lot of clutter on the counter.
+Frame 693.0: The kitchen is on the left side of the image and the living room is on the right side of the image.
+Frame 801.0: The man is standing in the kitchen.
