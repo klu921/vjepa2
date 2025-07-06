@@ -28,7 +28,7 @@ class ImageCaptioner:
         Using Qwen2-VL-7B across 2 GPUs
         """
         
-        if torch.cuda.device_count() >= 2:
+        if False and torch.cuda.device_count() >= 2:
             self.use_model_parallel = True
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

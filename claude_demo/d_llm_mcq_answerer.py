@@ -30,7 +30,7 @@ class LLMMCQAnswerer:
     def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.1",):
 
         # Use exactly 2 GPUs
-        if torch.cuda.device_count() >= 2:
+        if False and torch.cuda.device_count() >= 2:
             self.use_model_parallel = True
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -200,7 +200,9 @@ Instructions: For the following, please think out loud, write down all your reas
         choices_text = ", ".join(choices)
         
         prompt = f"""Read this question: "{question}" and choices: {choices_text}.
-        If the objects in the question and choices are related to the frame, describe them based only on the frame in great detail. Write a caption that might help answer the question."""
+        Looking at the frame, describe all the objects that appear in both the question and the frame in great detail. 
+        If the objects in the question and choices are related to the frame, describe them based only on the frame in great detail. 
+        """
         return prompt
     
     def answer_mcq_with_enhanced_workflow(self, 
@@ -235,10 +237,9 @@ Instructions: For the following, please think out loud, write down all your reas
         captioner = ImageCaptioner()
         enhanced_captions = []
         
-        #TODO: move the pipeline to inside the file-writer, so this actually runs correctly + not rerun.
-        with open("key_frames.txt", "w") as key_frames_file:
-            key_frames_file.write("Key Frames for Questions: \n")
-            key_frames_file.write("=" * 60 + "\n\n") 
+        with open("key_frames.txt", "a") as key_frames_file:
+            key_frames_file.write("key frames for question: {question}\n")
+            key_frames_file.write("=" * 60 + "\n\n")
             
             for frame_data in key_frames:
                 frame_path = frame_data.get('frame_path', '')
@@ -252,8 +253,9 @@ Instructions: For the following, please think out loud, write down all your reas
                         'frame_path': frame_path,
                         'captions': enhanced_caption
                     })
+
                     key_frames_file.write(f"Frame {timestamp}: {enhanced_caption}\n")
-        
+            
         # Step 4: Answer MCQ with enhanced captions
         result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
         
