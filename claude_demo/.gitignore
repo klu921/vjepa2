@@ -1,3 +1,6 @@
 video.mp4
 *.mp4
 video/*
+node_modules/*
+package-lock.json
+package.json

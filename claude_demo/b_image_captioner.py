@@ -13,90 +13,44 @@ import torch
 from typing import List, Dict, Any
 import json
 import os
+from together import Together
 
 # Set custom cache directory for model weights
 os.makedirs("data/", exist_ok=True)
 
-CACHE_DIR = "data/qwen_vl_7b_instruct_weights"
-
-# Global model instantiation removed - moved to class
+client = Together()
 
 class ImageCaptioner:
-    def __init__(self, model_name: str = "Qwen/Qwen2-VL-7B-Instruct"):
+    def __init__(self, model_name: str = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"):
         """
         Initialize the image captioning model
-        Using Qwen2-VL-7B across 2 GPUs
         """
-        
-        if False and torch.cuda.device_count() >= 2:
-            self.use_model_parallel = True
-        else:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self.use_model_parallel = False
-        
-        
-        self.processor = AutoProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
-        
-        if self.use_model_parallel:
-            self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, 
-                cache_dir=CACHE_DIR,
-                torch_dtype=torch.float16,
-                trust_remote_code=True,
-                device_map="auto"  # Use only GPU 0 and 1
-            )
-        else:
-            self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, 
-                cache_dir=CACHE_DIR,
-                torch_dtype=torch.float16,
-                trust_remote_code=True
-            ).to(self.device)
+        self.model_name = model_name
         
         print(f"Model loaded successfully")
-        self.model.eval()   
 
     def caption_image(self, image_path: str, prompt: str) -> str:
         """
-        Generate detailed caption for a single image using InstructBLIP-XL
+        Generate detailed caption for a single image by querying meta on together api
         """
         
         try:
             image = Image.open(image_path).convert('RGB')
-            
-            # Format the prompt properly for Qwen VL
-            formatted_prompt = f"<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{prompt}<|im_end|>\n<|im_start|>assistant\n"
-            
-            inputs = self.processor(
-                images=image, 
-                text=formatted_prompt, 
-                return_tensors="pt",
-                padding=True
-            )
-            
-            # Move inputs to same device as model
-            if self.use_model_parallel:
-                first_device = next(self.model.parameters()).device
-                inputs = {k: v.to(first_device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
 
-            else:
-                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
-            
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **inputs, 
-                    max_new_tokens=250, 
-                    do_sample=False,
-                    num_beams=1,
-                    pad_token_id=self.processor.tokenizer.eos_token_id
-                )
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "user", 
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data/frames/{image_path}"}},
+                        {"type": "text", "text": prompt}
+                    ]}
+                ],
+                stream = True
+            )
+
+            generated_text = response.choices[0].message.content    
         
-            # Decode only the new tokens (skip the input prompt)
-            input_length = inputs['input_ids'].shape[1]
-            generated_text = self.processor.decode(generated_ids[0][input_length:], skip_special_tokens=True)
-            
-            # Clear CUDA memory after each image
-            torch.cuda.empty_cache()
             
             return generated_text.strip()
             

@@ -44,7 +44,7 @@ def test_llm_mcq_answerer():
     print(f"Loaded {len(questions)} questions and {len(captions)} captions")
     
     try:
-        llm_answerer = LLMMCQAnswerer("mistralai/Mistral-7B-Instruct-v0.1")
+        llm_answerer = LLMMCQAnswerer("meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8")
     except Exception as e:
         print(f"Failed to initialize LLM: {e}")
         return

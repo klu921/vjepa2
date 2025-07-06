@@ -27,30 +27,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 class LLMMCQAnswerer:
 
-    def __init__(self, model_name: str = "mistralai/Mistral-7B-Instruct-v0.1",):
-
-        # Use exactly 2 GPUs
-        if False and torch.cuda.device_count() >= 2:
-            self.use_model_parallel = True
-        else:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self.use_model_parallel = False
-
-        cache_dir = "data/mistral_7b_instruct_weights"
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        
-        if self.use_model_parallel:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name, 
-                device_map="auto"  # Use only GPU 0 and 1
-            )
-        else:
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
-            self.model.to(self.device)
+    def __init__(self, model_name: str = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"):
         
         # Initialize sentence transformer for finding key frames
+        self.model_name = model_name
         self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     
@@ -72,51 +52,39 @@ class LLMMCQAnswerer:
         # Format captions, prompt for the model
         caption_text = self._format_captions(captions) #
         prompt = self._create_mcq_prompt(question, choices, caption_text) #creates a well-structured prompt
+        
+        response = client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "user", 
+                "content": [
+                    {"type": "text", "text": prompt}
+                ]}
+            ],
+            stream = True
+        )
 
-        if self.use_model_parallel:
-            first_device = next(self.model.parameters()).device
-            inputs = self.tokenizer(prompt, return_tensors = "pt").to(first_device)
-        else:
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        response = response.choices[0].message.content
         
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=300,  # Increased for chain-of-thought reasoning
-                temperature=0.3,  # Lower temperature for more focused answers
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
-        
-        # Decode only the new tokens (remove input prompt)
-        input_length = inputs.input_ids.shape[1]
-        generated_tokens = outputs[0][input_length:]
-        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         predicted_answer = ""
         try:
             predicted_answer = response.split("The correct answer is: ")[1]
         except IndexError:
             predicted_answer = "No answer found"
-            
-        # Clear CUDA memory after each question
-        torch.cuda.empty_cache()
         
         return {
             "predicted_answer": predicted_answer,
-            "full_response": response,
             "reasoning": response
         }
         
     
     def _format_captions(self, captions: List[Dict]) -> str:
-        """Format captions into readable text for LLM"""
+        """append all general captions into a single string for the model"""
         formatted = []
         
         for i, cap_data in enumerate(captions):
             timestamp = cap_data.get('timestamp', 0)
             captions_dict = cap_data.get('captions', {})
-            #TODO: FINISH THIS UP
             for caption in captions_dict:
                 formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption}")
                 
@@ -140,8 +108,8 @@ ANSWER CHOICES:
 
 Instructions: For the following, please think out loud, write down all your reasoning, and add it to a "reasoning" section numbered 1 to 4.
 1. First, carefully analyze the video frame descriptions and identify any spatial information that is relevant to the question, and think out loud.
-3. Consider each answer choice, and evaluate it against the evidence from the video out loud.
-4. Choose the answer that best matches what is shown in the video, and justify your answer out loud.
+3. Consider each answer choice, and evaluate it against the evidence from the frames out loud.
+4. Choose the answer that best matches what is shown in the frames, and justify your answer out loud.
 5. Finally, please present your answer in the format of "The correct answer is: [answer]" """
 
         return prompt
@@ -273,32 +241,4 @@ def load_video_captions(captions_file: str = "data/video_captions.json") -> List
 
 
 if __name__ == "__main__":
-    # Example usage
-    answerer = LLMMCQAnswerer("mistralai/Mistral-7B-Instruct-v0.1")
-    
-    # Load your video captions
-    captions = load_video_captions()
-    
-    # Example MCQ
-    sample_mcq = {
-        "question": "What is the person in the video doing?",
-        "choices": [
-            "Cooking in the kitchen",
-            "Eating breakfast at a table", 
-            "Reading a book",
-            "Watching television"
-        ],
-        "correct_answer": "B"
-    }
-    
-    result = answerer.answer_mcq_with_captions(
-        question=sample_mcq["question"],
-        choices=sample_mcq["choices"],
-        relevant_captions=captions[:3]  # Use first 3 captions
-    )
-    
-    print("MCQ Result:")
-    print(f"Question: {sample_mcq['question']}")
-    print(f"Predicted Answer: {result['predicted_answer']}")
-    print(f"Confidence: {result['confidence']:.2f}")
-    print(f"Reasoning: {result['reasoning']}")
+    pass

@@ -35,20 +35,14 @@ class get_general_captions:
 
         #TODO: Design the best possible prompt for general captioning that represents the image well
         self.GENERAL_PROMPT = """
-        Look at the frame from left to right, bottom to top. Write in the following form:
-        
-        Objects: Describe all the items and people you see in detail: their colors, textures, purposes, etc
-        Spatial Layout: The relationships between the objects, the actions of the objects if they are moving, how they interact with the environment, etc.
-        Motions: Any motions, actions, interactions, humans if there are any. 
-        Environment: The environment of the frame, the background, the weather, the time of day, etc.
-        Summary: A concise summary of the main idea of theframe. 
-        VERY IMPORTANT: YOU ARE ALLOWED TO USE A MAXIMUM OF 400 words in total.
+            Please caption this image, describing each object in great detail. Describe each object's color, shape, size, texture, location, purpose, relationships with other objects. Describe also the main actions in this image, if there are any. And describe the setting, background, spatial layout, and context of the image. Please format your answer as follows:
+Objects: [object descriptions]
+Actions: 
+Setting/context: 
+            """
 
-        """
-        
     def process_video(self, interval_seconds: int = 3, save_captions: bool = True) -> bool:
         """
-        Complete video processing pipeline:
         1. Extract frames
         2. Generate captions
         3. Save results
