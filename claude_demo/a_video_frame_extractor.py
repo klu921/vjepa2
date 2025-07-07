@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 class VideoFrameExtractor:
-    def __init__(self, video_path: str, output_dir: str = "data/frames"):
+    def __init__(self, video_path: str, output_dir: str = "frames"):
         self.video_path = video_path
         self.output_dir = output_dir
         self.frames_data = []

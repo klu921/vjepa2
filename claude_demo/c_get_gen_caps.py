@@ -22,8 +22,8 @@ class get_general_captions:
         Initialize the complete video understanding framework
         """
         self.video_path = video_path
-        self.frames_dir = "data/frames"
-        self.captions_file = "data/video_captions.json"
+        self.frames_dir = "frames"
+        self.captions_file = "captions/video_captions.json"
         
         # Initialize components
         self.frame_extractor = None
@@ -48,14 +48,16 @@ Setting/context:
         3. Save results
         """      
         #extract frames
+        frames_need_extraction = False
         try:
-            self.frame_extractor = VideoFrameExtractor(self.video_path, self.frames_dir)
-            video_info = self.frame_extractor.get_frame_info()
+            if frames_need_extraction:
+                self.frame_extractor = VideoFrameExtractor(self.video_path, self.frames_dir)
+                video_info = self.frame_extractor.get_frame_info()
 
-            if not os.path.exists(self.frames_dir) or not os.listdir(self.frames_dir):
-                print("Frames directory is empty or doesn't exist. Extracting frames...")
-                self.frames_data = self.frame_extractor.extract_frames(interval_seconds)
-    
+                if not os.path.exists(self.frames_dir) or not os.listdir(self.frames_dir):
+                    print("Frames directory is empty or doesn't exist. Extracting frames...")
+                    self.frames_data = self.frame_extractor.extract_frames(interval_seconds)
+        
             else:
                 print("Frames already exist in directory. Loading existing frames...")
                 # Load existing frames from directory
@@ -75,14 +77,11 @@ Setting/context:
             print(f"Error extracting frames: {e}")
             return False
         
-        # generate N
+        # generate captions
         print("\n=== STEP 2: Generating Captions ===")
         try:
             self.captioner = ImageCaptioner()
             self.captioned_frames = self.captioner.caption_frames(self.frames_data, self.GENERAL_PROMPT)
-            
-            if save_captions:
-                self.captioner.save_captions(self.captioned_frames, self.captions_file)
             
         except Exception as e:
             print(f"Error generating captions: {e}")

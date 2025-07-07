@@ -14,9 +14,11 @@ from typing import List, Dict, Any
 import json
 import os
 from together import Together
+import base64
+import time
 
 # Set custom cache directory for model weights
-os.makedirs("data/", exist_ok=True)
+#os.makedirs("data/", exist_ok=True)
 
 client = Together()
 
@@ -34,29 +36,40 @@ class ImageCaptioner:
         Generate detailed caption for a single image by querying meta on together api
         """
         
-        try:
-            image = Image.open(image_path).convert('RGB')
-
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "user", 
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data/frames/{image_path}"}},
-                        {"type": "text", "text": prompt}
-                    ]}
-                ],
-                stream = True
-            )
-
-            generated_text = response.choices[0].message.content    
+        max_retries = 6
+        retry_delay = 10 
         
-            
-            return generated_text.strip()
-            
-        except Exception as e:
-            print(f"Error captioning image {image_path}: {e}")
-            return "Error generating caption"
+        for attempt in range(max_retries):
+            try:
+                with open(image_path, "rb") as image_file:
+                    image = base64.b64encode(image_file.read()).decode('utf-8')
+
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {
+                            "role": "user", 
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image}"}},
+                            ]}
+                    ],
+                    stream = False
+                )
+
+                generated_text = response.choices[0].message.content    
+                return generated_text.strip()
+                
+            except Exception as e:
+                if "rate" in str(e).lower() and attempt < max_retries - 1:
+                    print(e)
+                    print(f"Rate limited on attempt {attempt + 1}. Waiting {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"Error captioning image {image_path}: {e}")
+                    return "Error generating caption"
     
    
     
@@ -67,28 +80,43 @@ class ImageCaptioner:
         
         captioned_frames = []
         
-        for i in range(0, len(frame_data)):
+        # Check if captions file exists and load existing data
+        captions_file = "captions/video_captions.json"
+        if os.path.exists(captions_file):
+            with open(captions_file, "r") as f:
+                existing_data = json.load(f)
+        else:
+            existing_data = []
+        
+        # Determine starting frame (resume from where we left off)
+        start_frame = len(existing_data)
+        
+        if start_frame >= len(frame_data):
+            print(f"All {len(frame_data)} frames already captioned")
+            return existing_data
+        
+        print(f"Starting from frame {start_frame + 1}/{len(frame_data)}")
+        
+        for i in range(start_frame, len(frame_data)):
             img = frame_data[i][1] # path to image
             caption = self.caption_image(img, prompt)
-            captioned_frames.append({
+            
+            frame_caption = {
                 'timestamp': frame_data[i][0],
                 'frame_path': frame_data[i][1],
                 'captions': caption
-            })
-            if i % 1 == 0:
-                print(f"Captioned {i} frames")
-        
-        return captioned_frames
+            }
+            captioned_frames.append(frame_caption)
+            existing_data.append(frame_caption)
+            
+            # Save progress after each frame
+            with open(captions_file, "w") as f:
+                json.dump(existing_data, f, indent=2)
+            
+            print(f"Captioned {i+1}/{len(frame_data)} frames")
+            
+        return existing_data
     
-    def save_captions(self, captioned_frames: List[Dict], output_path: str = "data/video_captions.json"):
-        """
-        Save all captions to a JSON file for offline querying
-        """
-        with open(output_path, 'w') as f:
-            json.dump(captioned_frames, f, indent=2)
-        
-        print(f"Saved {len(captioned_frames)} captioned frames to {output_path}")
-
 
 if __name__ == "__main__":
     # Test the captioner
