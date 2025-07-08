@@ -10,6 +10,8 @@ from d_llm_mcq_answerer import LLMMCQAnswerer, load_video_captions
 from typing import List, Dict, Any
 import re
 
+TOGETHER_API_KEY = "c0b5142ff581b2e2a6f64a778d4bd396b419a0bfffc0efbc3bdf635f03b1f3d0"
+
 def load_spatial_reasoning_dataset(dataset_path: str = "question_set/spatial_reasoning_dataset.csv") -> List[Dict]:
     """Load and parse spatial reasoning questions from CSV"""
     df = pd.read_csv(dataset_path)
@@ -84,7 +86,7 @@ def test_llm_mcq_answerer():
                         question=q['question'],
                         choices=q['choices'],
                         captions=captions,
-                        k=3  # Use top 3 most relevant frames selected by LLM reasoning
+                        k=10  # Use top 10 most relevant frames selected by LLM reasoning
                     )
                     
                     result.update({

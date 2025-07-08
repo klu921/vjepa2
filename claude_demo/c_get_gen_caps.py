@@ -52,6 +52,47 @@ Setting/context:
 
 BE EXTREMELY THOROUGH AND DETAILED in every aspect."""
 
+        self.GENERAL_BATCH_PROMPT = """CRITICAL: You must provide EXTREME DETAIL for each image following this EXACT format. Here is an example of the level of detail required:
+
+EXAMPLE FORMAT:
+Image 1:
+Objects:
+- The man: He is an older adult with short gray hair and a mustache. He is wearing a yellow T-shirt with red stripes and a red star on the chest. The shirt appears to be made of a lightweight, possibly cotton material. He is standing in a hallway, looking directly at the camera with a neutral expression. His skin tone is fair, and he has a few wrinkles around his eyes and mouth. He is positioned in front of a dark-colored door.
+- The mirror: It is a large, round mirror with a black frame. The mirror is mounted on a white wall in a hallway. It reflects the image of the hallway, including another door, a tiled floor, and various objects in the background. The mirror's surface is smooth and reflective.
+- The hallway: The hallway has white walls and a tiled floor. There are several doors leading off the hallway, including the one behind the man and another visible in the reflection of the mirror. The hallway is well-lit, with light coming from an unseen source.
+
+Actions:
+- The man is standing still, looking directly at the camera. There are no other apparent actions in the image.
+
+Setting/context:
+- The image was taken in a residential setting, likely a home or apartment. The hallway and doors suggest a private living space. The presence of various objects in the background, such as furniture and personal items, further supports this interpretation. The image appears to be a casual, informal photograph, possibly taken by the man himself or someone else in the household.
+
+IMPORTANT: Caption each image independently without referring to other images in this batch. Treat each image as completely separate and describe it fully on its own.
+
+NOW CAPTION EACH IMAGE WITH THIS SAME EXTREME LEVEL OF DETAIL:
+
+Image 1:
+Objects:
+- [Describe EVERY object with extreme detail: exact colors, materials, textures, shapes, sizes, positions, relationships, conditions, etc.]
+
+Actions:
+- [Describe ALL actions, movements, gestures, expressions, interactions in complete detail]
+
+Setting/context:
+- [Describe the complete environment, lighting, atmosphere, spatial layout, context, purpose, etc.]
+
+Image 2:
+Objects:
+- [Same extreme detail level - describe independently without referencing Image 1]
+
+Actions:
+- [Same extreme detail level - describe independently without referencing Image 1]
+
+Setting/context:
+- [Same extreme detail level - describe independently without referencing Image 1]
+
+Continue this pattern for all images. Each image description must be COMPLETELY INDEPENDENT. BE EXTREMELY THOROUGH AND DETAILED."""
+
     def process_video(self, interval_seconds: int = 3, save_captions: bool = True) -> bool:
         """
         1. Extract frames
@@ -92,7 +133,7 @@ BE EXTREMELY THOROUGH AND DETAILED in every aspect."""
         print("\n=== STEP 2: Generating Captions ===")
         try:
             self.captioner = ImageCaptioner()
-            self.captioned_frames = self.captioner.caption_frames(self.frames_data, self.GENERAL_PROMPT)
+            self.captioned_frames = self.captioner.caption_frames(self.frames_data, self.GENERAL_BATCH_PROMPT, captions_on = True)
             
         except Exception as e:
             print(f"Error generating captions: {e}")

@@ -25,7 +25,8 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from together import Together
-
+from PIL import Image
+import time
 client = Together()
 
 class LLMMCQAnswerer:
@@ -55,17 +56,26 @@ class LLMMCQAnswerer:
         # Format captions, prompt for the model
         caption_text = self._format_captions(captions) #
         prompt = self._create_mcq_prompt(question, choices, caption_text) #creates a well-structured prompt
-        
-        response = client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "user", 
-                "content": [
-                    {"type": "text", "text": prompt}
-                ]}
-            ],
-            stream = True
-        )
+        with open("prompt.txt", "w") as f:
+            f.write(prompt)
+
+        attempts = 6
+        for i in range(attempts):
+            try:
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "user", 
+                        "content": prompt}
+                    ],
+                    stream = False
+                )
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+                time.sleep(10)
+                continue
+
 
         response = response.choices[0].message.content
         
@@ -87,9 +97,9 @@ class LLMMCQAnswerer:
         
         for i, cap_data in enumerate(captions):
             timestamp = cap_data.get('timestamp', 0)
-            captions_dict = cap_data.get('captions', {})
-            for caption in captions_dict:
-                formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption}")
+            caption_text = cap_data.get('captions', '')
+            # Caption text is a single string, not a list or dict
+            formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption_text}")
                 
         return "\n".join(formatted)
 
@@ -180,7 +190,7 @@ Instructions: For the following, please think out loud, write down all your reas
                                         question: str, 
                                         choices: List[str], 
                                         captions: List[Dict],
-                                        k: int = 3) -> Dict[str, Any]:
+                                        k: int = 10) -> Dict[str, Any]:
         """
         1. Use LLM reasoning to select key frames from all captions
         2. Generate specific prompts for recaptioning
@@ -203,6 +213,11 @@ Instructions: For the following, please think out loud, write down all your reas
         print(f"Using LLM to analyze {len(captions)} captions and select key frames...")
         frame_selector = LLMFrameSelector()
         key_frames = frame_selector.select_key_frames(captions, question, choices, max_frames=k)
+        print("key frames: ", key_frames)
+
+        key_frames_data = []
+        for frame in key_frames:
+            key_frames_data.append((frame['timestamp'], frame['frame_path'], Image.open(frame['frame_path'])))
         
         # Step 2: Generate specific prompt for recaptioning
         specific_prompt = self.gen_specific_prompt(question, choices)
@@ -212,32 +227,17 @@ Instructions: For the following, please think out loud, write down all your reas
         captioner = ImageCaptioner()
         enhanced_captions = []
         
-        with open("question_set/key_frames.txt", "a") as key_frames_file:
+        with open("question_set/key_frames.txt", "a") as key_frames_file: 
             key_frames_file.write(f"Key frames for question: {question}\n")
             key_frames_file.write("=" * 60 + "\n\n")
-            
-            for frame_data in key_frames:
-                frame_path = frame_data.get('frame_path', '')
-                timestamp = frame_data.get('timestamp', 0)
-                
-                if frame_path and os.path.exists(frame_path):
-                    # Generate enhanced caption
-                    enhanced_caption = captioner.caption_image(frame_path, specific_prompt)
-                    enhanced_captions.append({
-                        'timestamp': timestamp,
-                        'frame_path': frame_path,
-                        'captions': enhanced_caption
-                    })
-
-                    key_frames_file.write(f"Frame {timestamp}s: {enhanced_caption}\n\n")
-                    print(f"Enhanced caption for frame at {timestamp}s: {enhanced_caption[:100]}...")
+            enhanced_captions = captioner.caption_frames(key_frames_data, specific_prompt, captions_on = False)
+            key_frames_file.write(f"Enhanced caption for frames: {enhanced_captions}...")
             
         # Step 4: Answer MCQ with enhanced captions
         print("Generating final answer using enhanced captions...")
         result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
         
         # Clear CUDA memory
-        torch.cuda.empty_cache()
         
         return result
 

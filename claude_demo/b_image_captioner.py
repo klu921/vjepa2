@@ -83,48 +83,7 @@ class ImageCaptioner:
         for attempt in range(max_retries):
             try:
                 # Create multi-image prompt with sample and detailed formatting instructions
-                multi_prompt = f"""{prompt}
-
-CRITICAL: You must provide EXTREME DETAIL for each image following this EXACT format. Here is an example of the level of detail required:
-
-EXAMPLE FORMAT:
-Image 1:
-Objects:
-- The man: He is an older adult with short gray hair and a mustache. He is wearing a yellow T-shirt with red stripes and a red star on the chest. The shirt appears to be made of a lightweight, possibly cotton material. He is standing in a hallway, looking directly at the camera with a neutral expression. His skin tone is fair, and he has a few wrinkles around his eyes and mouth. He is positioned in front of a dark-colored door.
-- The mirror: It is a large, round mirror with a black frame. The mirror is mounted on a white wall in a hallway. It reflects the image of the hallway, including another door, a tiled floor, and various objects in the background. The mirror's surface is smooth and reflective.
-- The hallway: The hallway has white walls and a tiled floor. There are several doors leading off the hallway, including the one behind the man and another visible in the reflection of the mirror. The hallway is well-lit, with light coming from an unseen source.
-
-Actions:
-- The man is standing still, looking directly at the camera. There are no other apparent actions in the image.
-
-Setting/context:
-- The image was taken in a residential setting, likely a home or apartment. The hallway and doors suggest a private living space. The presence of various objects in the background, such as furniture and personal items, further supports this interpretation. The image appears to be a casual, informal photograph, possibly taken by the man himself or someone else in the household.
-
-IMPORTANT: Caption each image independently without referring to other images in this batch. Treat each image as completely separate and describe it fully on its own.
-
-NOW CAPTION EACH IMAGE WITH THIS SAME EXTREME LEVEL OF DETAIL:
-
-Image 1:
-Objects:
-- [Describe EVERY object with extreme detail: exact colors, materials, textures, shapes, sizes, positions, relationships, conditions, etc.]
-
-Actions:
-- [Describe ALL actions, movements, gestures, expressions, interactions in complete detail]
-
-Setting/context:
-- [Describe the complete environment, lighting, atmosphere, spatial layout, context, purpose, etc.]
-
-Image 2:
-Objects:
-- [Same extreme detail level - describe independently without referencing Image 1]
-
-Actions:
-- [Same extreme detail level - describe independently without referencing Image 1]
-
-Setting/context:
-- [Same extreme detail level - describe independently without referencing Image 1]
-
-Continue this pattern for all images. Each image description must be COMPLETELY INDEPENDENT. BE EXTREMELY THOROUGH AND DETAILED."""
+                multi_prompt = f"""{prompt}"""
                 
                 content = [{"type": "text", "text": multi_prompt}]
                 
@@ -204,7 +163,7 @@ Continue this pattern for all images. Each image description must be COMPLETELY 
         
         return captions
 
-    def caption_frames(self, frame_data: List[tuple], prompt: str) -> List[Dict[str, Any]]:
+    def caption_frames(self, frame_data: List[tuple], prompt: str, captions_file: str = "captions/video_captions.json", captions_on: bool = True) -> List[Dict[str, Any]]:
         """
         frame_data: List of (timestamp, frame_path, frame_array) tuples
         """
@@ -212,7 +171,7 @@ Continue this pattern for all images. Each image description must be COMPLETELY 
         captioned_frames = []
         
         # Check if captions file exists and load existing data
-        captions_file = "captions/video_captions.json"
+        captions_file = captions_file
         if os.path.exists(captions_file):
             with open(captions_file, "r") as f:
                 existing_data = json.load(f)
@@ -222,11 +181,12 @@ Continue this pattern for all images. Each image description must be COMPLETELY 
         # Determine starting frame (resume from where we left off)
         start_frame = len(existing_data)
         
-        if start_frame >= len(frame_data):
-            print(f"All {len(frame_data)} frames already captioned")
-            return existing_data
+        if captions_on:
+            if start_frame >= len(frame_data):
+                print(f"All {len(frame_data)} frames already captioned")
+                return existing_data
         
-        print(f"Starting from frame {start_frame + 1}/{len(frame_data)}")
+            print(f"Starting from frame {start_frame + 1}/{len(frame_data)}")
         
         # Process frames in batches of 20
         batch_size = 10
@@ -253,8 +213,9 @@ Continue this pattern for all images. Each image description must be COMPLETELY 
                 print(f"Frame {frame[1]} ({frame[0]:.2f}s): {caption}")
             
             # Save progress after each batch
-            with open(captions_file, "w") as f:
-                json.dump(existing_data, f, indent=2)
+            if captions_on:
+                with open(captions_file, "w") as f:
+                    json.dump(existing_data, f, indent=2)
             
             print(f"Captioned batch {batch_start//batch_size + 1} ({len(batch_frames)} frames)")
             
