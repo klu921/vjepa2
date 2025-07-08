@@ -77,15 +77,14 @@ def test_llm_mcq_answerer():
                 answers_file.write("\n")
                 
                 try:
-                    # Use enhanced LLM workflow to answer
-                    key_frames_file.write(f"key frames for question: {q['question']}\n")
-                    key_frames_file.write("=" * 60 + "\n\n")
+                    # Use enhanced LLM workflow with intelligent frame selection
+                    print("Starting enhanced LLM workflow...")
                     
                     result = llm_answerer.answer_mcq_with_enhanced_workflow(
                         question=q['question'],
                         choices=q['choices'],
                         captions=captions,
-                        k=3  # Use top 3 most relevant frames
+                        k=3  # Use top 3 most relevant frames selected by LLM reasoning
                     )
                     
                     result.update({

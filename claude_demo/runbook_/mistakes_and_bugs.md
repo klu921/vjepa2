@@ -38,3 +38,9 @@
 - Caption storage: `data/video_captions.json`
 - Test files: `data/test_video.mp4`, `data/uploaded_video.mp4`
 - Automatic directory creation in setup script
+
+## Current Issues Found (2025-07-07)
+- **Caption Quality Issue**: Batch captions (10 images) are much shorter/less detailed than existing single-image captions
+- **Directory Structure**: Code uses 'frames/' and 'captions/' but docs specify 'data/frames/' and 'data/'
+- **Rate Limiting**: Successfully bypassed with batch processing (10 images per API call)
+- **API Usage**: Together AI model `meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8` has 0.6 queries/minute limit

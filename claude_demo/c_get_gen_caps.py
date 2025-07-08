@@ -15,6 +15,7 @@ import json
 import time
 
 from transformers import AutoProcessor, AutoModelForImageTextToText
+TOGETHER_API_KEY = "c0b5142ff581b2e2a6f64a778d4bd396b419a0bfffc0efbc3bdf635f03b1f3d0"
 
 class get_general_captions:
     def __init__(self, video_path: str):
@@ -34,12 +35,22 @@ class get_general_captions:
         self.captioned_frames = []
 
         #TODO: Design the best possible prompt for general captioning that represents the image well
-        self.GENERAL_PROMPT = """
-            Please caption this image, describing each object in great detail. Describe each object's color, shape, size, texture, location, purpose, relationships with other objects. Describe also the main actions in this image, if there are any. And describe the setting, background, spatial layout, and context of the image. Please format your answer as follows:
-Objects: [object descriptions]
-Actions: 
-Setting/context: 
-            """
+        self.GENERAL_PROMPT = """Please caption this image with EXTREME DETAIL, describing each object comprehensively. For each object, describe: exact colors, materials, textures, shapes, sizes, positions, relationships, conditions, and purposes. Describe all actions, movements, gestures, expressions, and interactions. Describe the complete environment, lighting, atmosphere, spatial layout, and context.
+
+Please format your answer EXACTLY as follows:
+
+Objects:
+- [Object 1]: [Extremely detailed description including all visual characteristics, materials, position, relationships, etc.]
+- [Object 2]: [Same level of extreme detail]
+- [Continue for ALL visible objects]
+
+Actions:
+- [Describe ALL actions, movements, gestures, expressions in complete detail]
+
+Setting/context:
+- [Describe the complete environment, lighting, atmosphere, spatial layout, context, purpose, etc.]
+
+BE EXTREMELY THOROUGH AND DETAILED in every aspect."""
 
     def process_video(self, interval_seconds: int = 3, save_captions: bool = True) -> bool:
         """

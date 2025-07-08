@@ -24,6 +24,9 @@ import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from together import Together
+
+client = Together()
 
 class LLMMCQAnswerer:
 
@@ -179,7 +182,7 @@ Instructions: For the following, please think out loud, write down all your reas
                                         captions: List[Dict],
                                         k: int = 3) -> Dict[str, Any]:
         """
-        1. Find top k most related key frames
+        1. Use LLM reasoning to select key frames from all captions
         2. Generate specific prompts for recaptioning
         3. Recaption the key frames with specific prompts
         4. Answer the MCQ using the enhanced captions
@@ -194,19 +197,23 @@ Instructions: For the following, please think out loud, write down all your reas
             Dict with predicted answer, confidence, and reasoning
         """
         from b_image_captioner import ImageCaptioner
+        from llm_frame_selector import LLMFrameSelector
         
-        # Step 1: Find key frames
-        key_frames = self.get_key_frames(captions, question, k)
+        # Step 1: Use LLM reasoning to select key frames
+        print(f"Using LLM to analyze {len(captions)} captions and select key frames...")
+        frame_selector = LLMFrameSelector()
+        key_frames = frame_selector.select_key_frames(captions, question, choices, max_frames=k)
         
         # Step 2: Generate specific prompt for recaptioning
         specific_prompt = self.gen_specific_prompt(question, choices)
         
         # Step 3: Recaption key frames with specific prompt
+        print("Generating enhanced captions for selected key frames...")
         captioner = ImageCaptioner()
         enhanced_captions = []
         
-        with open("key_frames.txt", "a") as key_frames_file:
-            key_frames_file.write("key frames for question: {question}\n")
+        with open("question_set/key_frames.txt", "a") as key_frames_file:
+            key_frames_file.write(f"Key frames for question: {question}\n")
             key_frames_file.write("=" * 60 + "\n\n")
             
             for frame_data in key_frames:
@@ -222,9 +229,11 @@ Instructions: For the following, please think out loud, write down all your reas
                         'captions': enhanced_caption
                     })
 
-                    key_frames_file.write(f"Frame {timestamp}: {enhanced_caption}\n")
+                    key_frames_file.write(f"Frame {timestamp}s: {enhanced_caption}\n\n")
+                    print(f"Enhanced caption for frame at {timestamp}s: {enhanced_caption[:100]}...")
             
         # Step 4: Answer MCQ with enhanced captions
+        print("Generating final answer using enhanced captions...")
         result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
         
         # Clear CUDA memory
@@ -233,7 +242,7 @@ Instructions: For the following, please think out loud, write down all your reas
         return result
 
 
-def load_video_captions(captions_file: str = "data/video_captions.json") -> List[Dict]:
+def load_video_captions(captions_file: str = "captions/video_captions.json") -> List[Dict]:
     """Load video captions from JSON file"""
     with open(captions_file, 'r') as f:
         return json.load(f)
