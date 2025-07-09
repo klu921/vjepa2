@@ -29,8 +29,6 @@ class ImageCaptioner:
         """
         self.model_name = model_name
         
-        print(f"Model loaded successfully")
-
     def caption_image(self, image_path: str, prompt: str) -> str:
         """
         Generate detailed caption for a single image by querying meta on together api
@@ -63,7 +61,6 @@ class ImageCaptioner:
                 
             except Exception as e:
                 if "rate" in str(e).lower() and attempt < max_retries - 1:
-                    print(e)
                     print(f"Rate limited on attempt {attempt + 1}. Waiting {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     continue
@@ -73,7 +70,7 @@ class ImageCaptioner:
     
    
     
-    def caption_batch(self, image_paths: List[str], prompt: str) -> List[str]:
+    def caption_batch(self, image_paths: List[str], prompt: str, general: bool = True) -> List[str]:
         """
         Caption up to 20 images at once
         """
@@ -87,7 +84,6 @@ class ImageCaptioner:
                 
                 content = [{"type": "text", "text": multi_prompt}]
                 
-                # Add up to 20 images
                 for image_path in image_paths:
                     with open(image_path, "rb") as image_file:
                         image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -104,17 +100,19 @@ class ImageCaptioner:
 
                 # Parse response to extract individual captions
                 response_text = response.choices[0].message.content
-                print(response_text)
+                print("response text: ", response_text)
                 captions = []
                 
                 # Parse detailed multi-image response
-                captions = self._parse_detailed_multi_image_response(response_text, len(image_paths))
-                
+                if general:
+                    captions = self._parse_detailed_multi_image_response(response_text, len(image_paths))
+                else:
+                    captions = response_text
+
                 return captions
                 
             except Exception as e:
                 if "rate" in str(e).lower() and attempt < max_retries - 1:
-                    print(e)
                     print(f"Rate limited on attempt {attempt + 1}. Waiting {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     continue
@@ -163,7 +161,7 @@ class ImageCaptioner:
         
         return captions
 
-    def caption_frames(self, frame_data: List[tuple], prompt: str, captions_file: str = "captions/video_captions.json", captions_on: bool = True) -> List[Dict[str, Any]]:
+    def caption_frames(self, frame_data: List[tuple], prompt: str, captions_file: str = "captions/video_captions.json", general: bool = True) -> List[Dict[str, Any]]:
         """
         frame_data: List of (timestamp, frame_path, frame_array) tuples
         """
@@ -171,24 +169,27 @@ class ImageCaptioner:
         captioned_frames = []
         
         # Check if captions file exists and load existing data
-        captions_file = captions_file
-        if os.path.exists(captions_file):
-            with open(captions_file, "r") as f:
-                existing_data = json.load(f)
-        else:
-            existing_data = []
+        if general:
+            captions_file = captions_file
+            if os.path.exists(captions_file):
+                with open(captions_file, "r") as f:
+                    existing_data = json.load(f)
+            else:
+                existing_data = []
         
         # Determine starting frame (resume from where we left off)
-        start_frame = len(existing_data)
+            start_frame = len(existing_data)
         
-        if captions_on:
             if start_frame >= len(frame_data):
                 print(f"All {len(frame_data)} frames already captioned")
                 return existing_data
         
             print(f"Starting from frame {start_frame + 1}/{len(frame_data)}")
+
+        else:
+            existing_data = []
+            start_frame = 0
         
-        # Process frames in batches of 20
         batch_size = 10
         remaining_frames = frame_data[start_frame:]
         
@@ -198,22 +199,22 @@ class ImageCaptioner:
             
             batch_paths = [frame[1] for frame in batch_frames]
             
-            batch_captions = self.caption_batch(batch_paths, prompt)
+            batch_captions = self.caption_batch(batch_paths, prompt, general)
             
-            for i, (frame, caption) in enumerate(zip(batch_frames, batch_captions)):
-                frame_caption = {
-                    'timestamp': frame[0],
-                    'frame_path': frame[1],
-                    'captions': caption
-                }
-                captioned_frames.append(frame_caption)
-                existing_data.append(frame_caption)
+            if general:
+                for i, (frame, caption) in enumerate(zip(batch_frames, batch_captions)):
+                    frame_caption = {
+                        'timestamp': frame[0],
+                        'frame_path': frame[1],
+                        'captions': caption
+                    }
+                    captioned_frames.append(frame_caption)
+                    existing_data.append(frame_caption)
+            else:
+                existing_data = batch_captions
                 
-                # Print the caption
-                print(f"Frame {frame[1]} ({frame[0]:.2f}s): {caption}")
-            
             # Save progress after each batch
-            if captions_on:
+            if general:
                 with open(captions_file, "w") as f:
                     json.dump(existing_data, f, indent=2)
             

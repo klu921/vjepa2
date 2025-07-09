@@ -10,7 +10,7 @@ key frames for final answer generation.
 import json
 from typing import List, Dict, Any
 from together import Together
-
+import time
 client = Together()
 
 class LLMFrameSelector:
@@ -27,7 +27,8 @@ class LLMFrameSelector:
                          captions: List[Dict], 
                          question: str, 
                          answer_choices: List[str],
-                         max_frames: int = 5) -> List[Dict]:
+                         max_frames: int = 10,
+                         log_file=None) -> List[Dict]:
         """
         Use LLM reasoning to select the most relevant frames for answering the question
         
@@ -42,34 +43,46 @@ class LLMFrameSelector:
         """
         # Create the reasoning prompt
         prompt = self._create_frame_selection_prompt(captions, question, answer_choices, max_frames)
+        retry_delay = 10
+        max_retries = 6
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "user", "content": [{"type": "text", "text": prompt}]}
+                    ],
+                    stream=False
+                )
+                
+                response_text = response.choices[0].message.content
+                
+                # Parse the response to extract selected frame indices
+                selected_indices = self._parse_frame_selection(response_text, len(captions))
+                
+                # Return the selected frames
+                selected_frames = [captions[i] for i in selected_indices if i < len(captions)]
+                
+                print(f"LLM selected {len(selected_frames)} key frames from {len(captions)} total frames")
+                
+                print(f"Selected frame timestamps: {[f['timestamp'] for f in selected_frames]}")
+                
+                if log_file:
+                    log_file.write(f"Selected frame timestamps: {[f['timestamp'] for f in selected_frames]}\n")
+                    log_file.flush()
+                    
+                return selected_frames
+                
+            except Exception as e:
+                if "rate" in str(e).lower():
+                    print(f"Rate limited on attempt {attempt + 1}. Waiting {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"Error in LLM frame selection: {e}")
+                    # Fallback to first few frames if LLM fails
+                    return captions[:max_frames]
         
-        try:
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "user", "content": [{"type": "text", "text": prompt}]}
-                ],
-                stream=False
-            )
-            
-            response_text = response.choices[0].message.content
-            
-            # Parse the response to extract selected frame indices
-            selected_indices = self._parse_frame_selection(response_text, len(captions))
-            
-            # Return the selected frames
-            selected_frames = [captions[i] for i in selected_indices if i < len(captions)]
-            
-            print(f"LLM selected {len(selected_frames)} key frames from {len(captions)} total frames")
-            print(f"Selected frame timestamps: {[f['timestamp'] for f in selected_frames]}")
-            
-            return selected_frames
-            
-        except Exception as e:
-            print(f"Error in LLM frame selection: {e}")
-            # Fallback to first few frames if LLM fails
-            return captions[:max_frames]
-    
     def _create_frame_selection_prompt(self, 
                                      captions: List[Dict], 
                                      question: str, 
@@ -104,11 +117,11 @@ ANSWER CHOICES:
 TASK:
 Carefully analyze each frame caption and determine which frames contain information most relevant to answering the question. Consider:
 
-1. Which frames show objects, actions, or spatial relationships mentioned in the question?
+1. Which frames show objects, actions, or spatial relationships mentioned in the question and answer choices?
 2. Which frames provide evidence that could help distinguish between the answer choices?
 3. Which frames show the key visual elements needed to make a decision?
 
-You should select AT MOST {max_frames} frames, but try to keep it minimal - only choose frames that are truly essential for answering the question.
+You should select AT MOST {max_frames} - only choose frames that are truly essential for answering the question.
 
 RESPONSE FORMAT:
 First, provide your reasoning for each potentially relevant frame. Then, clearly list your final selection.
@@ -162,14 +175,14 @@ Example: Selected Frames: 1, 5, 12
                     idx = num - 1
                     if idx not in selected_indices:
                         selected_indices.append(idx)
-                        if len(selected_indices) >= 5:  # Limit fallback selection
+                        if len(selected_indices) >= 10:  # Limit fallback selection
                             break
         
         # Final fallback: select first few frames
         if not selected_indices:
             selected_indices = list(range(min(3, total_frames)))
         
-        return selected_indices[:5]  # Ensure we don't exceed max frames
+        return selected_indices[:10]  # Ensure we don't exceed max frames
 
 def test_frame_selector():
     """Test the frame selector with sample data"""

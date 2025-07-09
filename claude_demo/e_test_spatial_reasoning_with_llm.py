@@ -54,13 +54,17 @@ def test_llm_mcq_answerer():
     results = []
     
     # Open file to write answers
-    with open("key_frames.txt", "a") as key_frames_file:
+    with open("question_set/key_frames.txt", "a") as key_frames_file:
 
         with open("Answers.txt", "w") as answers_file:
             answers_file.write("LLM Spatial Reasoning Answers and Reasoning\n")
             answers_file.write("=" * 60 + "\n\n") #for formatting
             
             for i, q in enumerate(questions):
+                key_frames_file.write("=" * 60)
+                key_frames_file.write(f"\n Question {i+1}/{len(questions)}\n")
+                key_frames_file.flush()  # Force write immediately
+
                 print(f"\n{'='*60}") #for formatting
                 print(f"Question {i+1}/{len(questions)}")
                 print(f"Task: {q['task']}")
@@ -77,6 +81,7 @@ def test_llm_mcq_answerer():
                 for j, choice in enumerate(q['choices']):
                     answers_file.write(f"  {chr(65+j)}. {choice}\n")
                 answers_file.write("\n")
+                answers_file.flush()
                 
                 try:
                     # Use enhanced LLM workflow with intelligent frame selection
@@ -86,7 +91,8 @@ def test_llm_mcq_answerer():
                         question=q['question'],
                         choices=q['choices'],
                         captions=captions,
-                        k=10  # Use top 10 most relevant frames selected by LLM reasoning
+                        k=10,  # Use top 10 most relevant frames selected by LLM reasoning
+                        log_file=key_frames_file
                     )
                     
                     result.update({
@@ -106,11 +112,13 @@ def test_llm_mcq_answerer():
                     answers_file.write("LLM Full Reasoning:\n")
                     answers_file.write(f"{result['reasoning']}\n")
                     answers_file.write("\n" + "="*60 + "\n\n")
+                    answers_file.flush()
                     
                 except Exception as e:
                     print(f"  ERROR: {e}")
                     answers_file.write(f"ERROR: {e}\n")
                     answers_file.write("\n" + "="*60 + "\n\n")
+                    answers_file.flush()
                     continue
     
     # Print summary

@@ -54,7 +54,7 @@ class LLMMCQAnswerer:
             Dict with predicted answer, confidence, and reasoning
         """
         # Format captions, prompt for the model
-        caption_text = self._format_captions(captions) #
+        caption_text = self._format_captions(captions, general = False) #
         prompt = self._create_mcq_prompt(question, choices, caption_text) #creates a well-structured prompt
         with open("prompt.txt", "w") as f:
             f.write(prompt)
@@ -72,7 +72,8 @@ class LLMMCQAnswerer:
                 )
                 break
             except Exception as e:
-                print(f"Error: {e}")
+                if "rate" in str(e).lower():
+                    print("Rate limited, waiting 10 seconds...")
                 time.sleep(10)
                 continue
 
@@ -91,18 +92,20 @@ class LLMMCQAnswerer:
         }
         
     
-    def _format_captions(self, captions: List[Dict]) -> str:
+    def _format_captions(self, captions: List[Dict], general: bool = True) -> str:
         """append all general captions into a single string for the model"""
         formatted = []
         
-        for i, cap_data in enumerate(captions):
-            timestamp = cap_data.get('timestamp', 0)
-            caption_text = cap_data.get('captions', '')
-            # Caption text is a single string, not a list or dict
-            formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption_text}")
-                
-        return "\n".join(formatted)
-
+        if general:
+            for i, cap_data in enumerate(captions):
+                timestamp = cap_data.get('timestamp', 0)
+                caption_text = cap_data.get('captions', '')
+                # Caption text is a single string, not a list or dict
+                formatted.append(f"Frame {i+1} (at {timestamp:.1f}s): {caption_text}")
+                    
+            return "\n".join(formatted)
+        else:
+            return captions
     
     def _create_mcq_prompt(self, question: str, choices: List[str], captions: str) -> str:
         """Create a well-structured prompt for MCQ answering with chain-of-thought"""
@@ -127,7 +130,7 @@ Instructions: For the following, please think out loud, write down all your reas
 
         return prompt
     
-    def get_key_frames(self, captions: List[Dict], question: str, k: int = 5) -> List[Dict]:
+    def get_key_frames(self, captions: List[Dict], question: str, k: int = 10) -> List[Dict]:
         """
         Find the top k most related key frames from captions based on the question
         
@@ -180,9 +183,11 @@ Instructions: For the following, please think out loud, write down all your reas
         """
         choices_text = ", ".join(choices)
         
-        prompt = f"""Read this question: "{question}" and choices: {choices_text}.
-        Looking at the frame, describe all the objects that appear in both the question and the frame in great detail. 
-        If the objects in the question and choices are related to the frame, describe them based only on the frame in great detail. 
+        prompt = f"""Read this question: "{question}" and choices: {choices_text}, and look carefully at the frames.
+
+        For each individual frame, do the following:
+
+        1. If the objects in the question and choices are related to the frame, describe them based only on the frame in great detail. Include relationships between objects, and temporal details. Please also include all the information available in the frame relevant to answer the question. Include any information that may rule out or confirm certain choices.
         """
         return prompt
     
@@ -190,7 +195,8 @@ Instructions: For the following, please think out loud, write down all your reas
                                         question: str, 
                                         choices: List[str], 
                                         captions: List[Dict],
-                                        k: int = 10) -> Dict[str, Any]:
+                                        k: int = 10,
+                                        log_file=None) -> Dict[str, Any]:
         """
         1. Use LLM reasoning to select key frames from all captions
         2. Generate specific prompts for recaptioning
@@ -212,11 +218,12 @@ Instructions: For the following, please think out loud, write down all your reas
         # Step 1: Use LLM reasoning to select key frames
         print(f"Using LLM to analyze {len(captions)} captions and select key frames...")
         frame_selector = LLMFrameSelector()
-        key_frames = frame_selector.select_key_frames(captions, question, choices, max_frames=k)
-        print("key frames: ", key_frames)
+        key_frames = frame_selector.select_key_frames(captions, question, choices, max_frames=k, log_file=log_file)
+    
 
         key_frames_data = []
         for frame in key_frames:
+            print("\n\nSELECTED key frames: ", frame['timestamp'])
             key_frames_data.append((frame['timestamp'], frame['frame_path'], Image.open(frame['frame_path'])))
         
         # Step 2: Generate specific prompt for recaptioning
@@ -226,19 +233,23 @@ Instructions: For the following, please think out loud, write down all your reas
         print("Generating enhanced captions for selected key frames...")
         captioner = ImageCaptioner()
         enhanced_captions = []
+
+        if log_file:
+            log_file.write(f"Key frames for question: {question}\n")
+            log_file.write("=" * 60 + "\n\n")
+            log_file.flush()
         
-        with open("question_set/key_frames.txt", "a") as key_frames_file: 
-            key_frames_file.write(f"Key frames for question: {question}\n")
-            key_frames_file.write("=" * 60 + "\n\n")
-            enhanced_captions = captioner.caption_frames(key_frames_data, specific_prompt, captions_on = False)
-            key_frames_file.write(f"Enhanced caption for frames: {enhanced_captions}...")
+        enhanced_captions = captioner.caption_frames(key_frames_data, specific_prompt, general = False)
+
+        if log_file:
+            log_file.write(f"Enhanced caption for frames: {enhanced_captions}... \n")
+            log_file.write("=" * 60 + "\n\n")
+            log_file.flush()
             
         # Step 4: Answer MCQ with enhanced captions
         print("Generating final answer using enhanced captions...")
         result = self.answer_mcq_with_captions(question, choices, enhanced_captions)
-        
-        # Clear CUDA memory
-        
+                
         return result
 
 
