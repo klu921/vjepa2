@@ -1,3 +1,5 @@
+First col correct answer, second produced answer.
+
 0. D A LEAVE OUT / MISSING IMAGES
 1. D D CORRECT
 2. E E CORRECT
