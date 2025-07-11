@@ -7,10 +7,10 @@ First col correct answer, second produced answer.
 4. C C CORRECT
 
 5. C A LEAVE OUT / MISSING IMAGES
-6. B E (ambiguous) believe the wording is ambiguous
+6. B E (ambiguous) believe the wording in choice E is ambiguous (model's answer could be argued to be correct)
 7. D A temporal, used old timestamps + approximations. ambiguous wording? Should encourage not to approximate timestamp @ begining.
 8. C A Doesn't actually query VLM. Makes assumptions. Need to prompt with to make no assumption.
-9. B A (ambiguous) LLM's answer choice is true if you look at right frames)
+9. B A (ambiguous) LLM's answer choice is true if you look at right frames
 
 10. C D temporal, used old timestamps. 
 11. A C (ambiguous)? The container + plastic cup both on the windowsill. could use a depth map to measure exactly, i guess. (see frame @ 9 sec)
