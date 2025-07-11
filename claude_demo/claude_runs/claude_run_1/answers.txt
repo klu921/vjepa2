@@ -1,0 +1,52 @@
+0. D
+1. D 
+2. E E Correct
+3. E 
+4. C 
+
+5. C 
+6. B E  Multiple interpretations of answer choice E (model thought "sink closer to the fridge than the chopping board" means dist(fridge -> sink) < dist(fridge -> chopping board)) 
+7. D A  (Temporal) Identified cleanup activity, and then stopped looking for more. Model tends to stop looking once it's found 'some piece of evidence', but lacks context of entire video.
+8. C C (Locate temporal event, analyze next frame) Correct
+9. B A Should be right? Kettle is on the stove. See frame @ 1200 secs (20 min)
+
+10. C  C (Temporal) Extracted wrong timeframe for gardening. Made a rough uncareful overview of the video at the beginning, captioned 40-50 as gardening, then used it as ground truth instead of doing the work.
+11. A C 
+12. E E
+13. A D
+14. D B
+
+15. A B
+16. B 
+17. B D
+18. D D
+19. E A Didn't do a frame search for books (got lazy)
+
+20. B A
+21. C B Reused wrong info from Question 7. 
+22. C D 
+23. D D
+24. E A Same problem as # 10. Got lazy
+
+25. A 
+26. A D
+27. E 
+28. A A
+
+29. A 
+30. A A 
+31. E C
+32. A 
+33. E 
+34. D E
+
+35. E E Based answer of q 19 (got lazy)
+36. E B Correct
+37 A E
+38. A E
+39. A B
+
+40. A B
+41. E B
+42. D 
+

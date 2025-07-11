@@ -1,0 +1,55 @@
+0. D A LEAVE OUT / MISSING IMAGES
+1. D D CORRECT
+2. E E CORRECT
+3. E C nav/spatial layout is hard
+4. C C CORRECT
+
+5. C A LEAVE OUT / MISSING IMAGES
+6. B E (ambiguous) believe the wording is ambiguous
+7. D A temporal, used old timestamps + approximations. ambiguous wording? Should encourage not to approximate timestamp @ begining.
+8. C A Doesn't actually query VLM. Makes assumptions. Need to prompt with to make no assumption.
+9. B A (ambiguous) LLM's answer choice is true if you look at right frames)
+
+10. C D temporal, used old timestamps. 
+11. A C (ambiguous)? The container + plastic cup both on the windowsill. could use a depth map to measure exactly, i guess. (see frame @ 9 sec)
+12. E E CORRECT
+13. A D (ambiguous)? llm also seems right (see frame @ 1200s)
+14. D B (ambiguous) / i can't find the ceramic vase? 
+
+15. A B (ambiguous) / chopping board not mounted on wall? it's leaning on the wall behind the fridge
+16. B D LEAVE OUT / MISSING IMAGES
+17. B A just missed the plastic box and cabinet. Also there are many cabinets, so semi ambiguous?
+18. D D CORRECT
+19. E B LLM thought puzzle organizing counts as managing personal items
+
+20. B C VLM thought cutting board was a white plate.
+21. C B Walked by computers, frames included computers, so LLM counted that as interacted with.
+22. C D Initial frame captions miss washing knife, because only appears in small segments.
+23. D D CORRECT 
+24. E A LEAVE OUT / MISSING IMAGES
+
+25. A D (ambiguous) ? I agree with LLM
+26. A D Assumes the "cooking segment" has no sink frames. Makes assumptions
+27. E A nav and spatial layout is hard, needs a spatial layout/mapping over lots of time
+28. A A CORRECT
+29. A A LEAVE OUT / MISSING IMAGES
+
+30. A C (ambiguous) answer choices A and C are basically the same? 
+31. E C (ambiguous) LLM answer is true
+32. A C (ambiguous) LLM thought living room was same as dining area. Dining area + living room are connected.
+33. E E CORRECT
+34. D A nav is hard, needs a spatial layout/mapping over lots of time.
+
+35. E E CORRECT
+36. E D still bad at temporal stuff + drawing lines between events. Hard to capture with just still frames.
+37. A A CORRECT
+38. A C My captions missed the action of picking up the helmet, so it can't locate the frames.
+39. A B (ambiguous) think the answer should be B?
+
+40. A A CORRECT
+41. E D (ambiguous) user does interact with a sponge (only diff between E and D).
+42. D A LEAVE OUT / MISSING IMAGES
+
+
+11 / 36 but many of the questions seem ambiguous, and i agree with model's answers. 
+after reviewing i would put it as a 23/36.

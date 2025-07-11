@@ -1,0 +1,17 @@
+SCRATCHPAD - Key Information Per Question
+
+This file will be updated for each question with relevant information found during analysis.
+Will be reset for each new question to maintain clarity.
+
+Current Question: Question 30 - List the events in the order they occurred after the camera wearer retrieves an egg tray from the fridge.
+Key Information: 
+- This is a perception/information_retrieval/sequence_recall question
+- Need to identify sequence of events after retrieving egg tray
+- Options involve 3 activities: cutting sausage, putting egg tray back, using cooking oil
+- Need to determine correct chronological order
+
+Evidence needed:
+- Find evidence of retrieving egg tray from fridge
+- Identify timestamp/frame of this event
+- Analyze subsequent events in chronological order
+- Look for evidence of: sausage cutting, egg tray return, cooking oil use

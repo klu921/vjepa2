@@ -1,10 +1,40 @@
 DDEEC CBDCB CAEAD ABBDE BCCDE AAEAA AEAED EEAAA AED
+CBECC CEAAA BCEDB BCEDC CBDEB AADAB EBCEC ECEDB BDB
+  Y Y Y       Y      Y        YY Y     Y  Y     
+_     _            _        _                     _
+
+3 5 6
+
+13
+19
+26
+27
+29
+34
+35
+
+
+9/38 given just key frames with question-specific prompt
+
 XDECC XEDAA DEBDB BBEDB ABCDB DADAB CBBEC EEECE BDA
    N   P
 
-_YYnY _nYnn nnnnn nYnYn nnYYn nYnYn nnnYn YYnnn nn_
+13/38 given all key frames with no question-specific prompt
 
-13/(38)
 
-BADAE BBDBB ECAE_ BCBCE EECBE DABBC BCAAC _EEDB BDA
-BAAAE BBB_B ECBEC BABCE EECBB A_ACD CCC_A B_EB_ B_B
+DEEC BDCB CAEAD ABDE BCCD AAEAA AEAED EEAAA AE
+
+
+1 2 3 4
+6 7 8 9 10 11 12 13 14 15
+17 18 19 20 21 22 23
+25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 
+
+
+1 navigation
+6 navigation
+17 navigation
+25 navigation
+30 spatial
+43 navigation
+
